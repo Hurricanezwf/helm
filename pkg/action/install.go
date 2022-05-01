@@ -68,6 +68,8 @@ type Install struct {
 
 	ChartPathOptions
 
+	DemeterAppSuite          string
+	DemeterCluster           string
 	ClientOnly               bool
 	CreateNamespace          bool
 	DryRun                   bool
@@ -242,11 +244,13 @@ func (i *Install) RunWithContext(ctx context.Context, chrt *chart.Chart, vals ma
 	// special case for helm template --is-upgrade
 	isUpgrade := i.IsUpgrade && i.DryRun
 	options := chartutil.ReleaseOptions{
-		Name:      i.ReleaseName,
-		Namespace: i.Namespace,
-		Revision:  1,
-		IsInstall: !isUpgrade,
-		IsUpgrade: isUpgrade,
+		Name:            i.ReleaseName,
+		Namespace:       i.Namespace,
+		Revision:        1,
+		IsInstall:       !isUpgrade,
+		IsUpgrade:       isUpgrade,
+		DemeterAppSuite: i.DemeterAppSuite,
+		DemeterCluster:  i.DemeterCluster,
 	}
 	valuesToRender, err := chartutil.ToRenderValues(chrt, vals, options, caps)
 	if err != nil {
@@ -278,7 +282,7 @@ func (i *Install) RunWithContext(ctx context.Context, chrt *chart.Chart, vals ma
 	}
 
 	// It is safe to use "force" here because these are resources currently rendered by the chart.
-	err = resources.Visit(setMetadataVisitor(rel.Name, rel.Namespace, true))
+	err = resources.Visit(setMetadataVisitor(rel.Name, rel.Namespace, i.DemeterAppSuite, i.DemeterCluster, true))
 	if err != nil {
 		return nil, err
 	}
