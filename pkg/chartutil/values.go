@@ -124,11 +124,13 @@ func ReadValuesFile(filename string) (Values, error) {
 // ReleaseOptions represents the additional release options needed
 // for the composition of the final values struct
 type ReleaseOptions struct {
-	Name      string
-	Namespace string
-	Revision  int
-	IsUpgrade bool
-	IsInstall bool
+	Name            string
+	Namespace       string
+	Revision        int
+	IsUpgrade       bool
+	IsInstall       bool
+	DemeterAppSuite string
+	DemeterCluster  string
 }
 
 // ToRenderValues composes the struct from the data coming from the Releases, Charts and Values files
@@ -142,12 +144,14 @@ func ToRenderValues(chrt *chart.Chart, chrtVals map[string]interface{}, options 
 		"Chart":        chrt.Metadata,
 		"Capabilities": caps,
 		"Release": map[string]interface{}{
-			"Name":      options.Name,
-			"Namespace": options.Namespace,
-			"IsUpgrade": options.IsUpgrade,
-			"IsInstall": options.IsInstall,
-			"Revision":  options.Revision,
-			"Service":   "Helm",
+			"Name":            options.Name,
+			"Namespace":       options.Namespace,
+			"IsUpgrade":       options.IsUpgrade,
+			"IsInstall":       options.IsInstall,
+			"Revision":        options.Revision,
+			"Service":         "demeter",
+			"DemeterAppSuite": options.DemeterAppSuite,
+			"DemeterCluster":  options.DemeterCluster,
 		},
 	}
 

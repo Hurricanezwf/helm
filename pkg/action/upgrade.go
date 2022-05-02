@@ -45,6 +45,8 @@ type Upgrade struct {
 
 	ChartPathOptions
 
+	DemeterAppSuite string
+	DemeterCluster  string
 	// Install is a purely informative flag that indicates whether this upgrade was done in "install" mode.
 	//
 	// Applications may use this to determine whether this Upgrade operation was done as part of a
@@ -216,10 +218,12 @@ func (u *Upgrade) prepareUpgrade(name string, chart *chart.Chart, vals map[strin
 	revision := lastRelease.Version + 1
 
 	options := chartutil.ReleaseOptions{
-		Name:      name,
-		Namespace: currentRelease.Namespace,
-		Revision:  revision,
-		IsUpgrade: true,
+		Name:            name,
+		Namespace:       currentRelease.Namespace,
+		Revision:        revision,
+		IsUpgrade:       true,
+		DemeterAppSuite: u.DemeterAppSuite,
+		DemeterCluster:  u.DemeterCluster,
 	}
 
 	caps, err := u.cfg.getCapabilities()
@@ -278,7 +282,7 @@ func (u *Upgrade) performUpgrade(ctx context.Context, originalRelease, upgradedR
 	}
 
 	// It is safe to use force only on target because these are resources currently rendered by the chart.
-	err = target.Visit(setMetadataVisitor(upgradedRelease.Name, upgradedRelease.Namespace, true))
+	err = target.Visit(setMetadataVisitor(upgradedRelease.Name, upgradedRelease.Namespace, u.DemeterAppSuite, u.DemeterCluster, true))
 	if err != nil {
 		return upgradedRelease, err
 	}
