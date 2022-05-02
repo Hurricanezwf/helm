@@ -78,7 +78,11 @@ func DiffUpdateResult(result *UpdateResult, forceUpdate bool) ([]byte, error) {
 			if err != nil {
 				return nil, fmt.Errorf("failed to convert resource info to mapping result, %w", err)
 			}
-			oldIndex[fmt.Sprintf("[FORCE UPDATE FROM OLD] %s/%s", oldRes.Kind, oldRes.Name)] = oldRes
+			if forceUpdate {
+				oldIndex[fmt.Sprintf("[FORCE UPDATE FROM OLD] %s/%s", oldRes.Kind, oldRes.Name)] = oldRes
+			} else {
+				oldIndex[fmt.Sprintf("%s/%s", oldRes.Kind, oldRes.Name)] = oldRes
+			}
 		}
 		if updated.To != nil {
 			newRes, err := ResourceInfoToMappingResult(updated.To)

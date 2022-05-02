@@ -79,7 +79,7 @@ func newTemplateCmd(cfg *action.Configuration, out io.Writer) *cobra.Command {
 			client.ClientOnly = !validate
 			client.APIVersions = chartutil.VersionSet(extraAPIs)
 			client.IncludeCRDs = includeCrds
-			rel, err := runInstall(args, client, valueOpts, out)
+			rel, err := runInstallWithSignalWait(args, client, valueOpts, out)
 
 			if err != nil && !settings.Debug {
 				if rel != nil {

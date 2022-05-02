@@ -36,6 +36,7 @@ import (
 	"helm.sh/helm/v3/pkg/cli/values"
 	"helm.sh/helm/v3/pkg/downloader"
 	"helm.sh/helm/v3/pkg/getter"
+	"helm.sh/helm/v3/pkg/release"
 	"helm.sh/helm/v3/pkg/storage/driver"
 )
 
@@ -87,121 +88,10 @@ func newUpgradeCmd(cfg *action.Configuration, out io.Writer) *cobra.Command {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client.Namespace = settings.Namespace()
-			client.DemeterAppSuite = settings.DemeterAppSuite
-			client.DemeterCluster = settings.DemeterCluster
-
-			// Fixes #7002 - Support reading values from STDIN for `upgrade` command
-			// Must load values AFTER determining if we have to call install so that values loaded from stdin are are not read twice
-			if client.Install {
-				// If a release does not exist, install it.
-				histClient := action.NewHistory(cfg)
-				histClient.Max = 1
-				if _, err := histClient.Run(args[0]); err == driver.ErrReleaseNotFound {
-					// Only print this to stdout for table output
-					if outfmt == output.Table {
-						fmt.Fprintf(out, "Release %q does not exist. Installing it now.\n", args[0])
-					}
-					instClient := action.NewInstall(cfg)
-					instClient.CreateNamespace = createNamespace
-					instClient.ChartPathOptions = client.ChartPathOptions
-					instClient.DryRun = client.DryRun
-					instClient.DisableHooks = client.DisableHooks
-					instClient.SkipCRDs = client.SkipCRDs
-					instClient.Timeout = client.Timeout
-					instClient.Wait = client.Wait
-					instClient.WaitForJobs = client.WaitForJobs
-					instClient.Devel = client.Devel
-					instClient.Namespace = client.Namespace
-					instClient.Atomic = client.Atomic
-					instClient.PostRenderer = client.PostRenderer
-					instClient.DisableOpenAPIValidation = client.DisableOpenAPIValidation
-					instClient.SubNotes = client.SubNotes
-					instClient.Description = client.Description
-
-					rel, err := runInstall(args, instClient, valueOpts, out)
-					if err != nil {
-						return err
-					}
-					showDesc := client.DryRun
-					return outfmt.Write(out, &statusPrinter{rel, settings.Debug, showDesc})
-				} else if err != nil {
-					return err
-				}
-			}
-
-			if client.Version == "" && client.Devel {
-				debug("setting version to >0.0.0-0")
-				client.Version = ">0.0.0-0"
-			}
-
-			chartPath, err := client.ChartPathOptions.LocateChart(args[1], settings)
+			rel, err := runUpgradeWithSignalWait(args, client, valueOpts, createNamespace, out)
 			if err != nil {
 				return err
 			}
-
-			p := getter.All(settings)
-			vals, err := valueOpts.MergeValues(p)
-			if err != nil {
-				return err
-			}
-
-			// Check chart dependencies to make sure all are present in /charts
-			ch, err := loader.Load(chartPath)
-			if err != nil {
-				return err
-			}
-			if req := ch.Metadata.Dependencies; req != nil {
-				if err := action.CheckDependencies(ch, req); err != nil {
-					err = errors.Wrap(err, "An error occurred while checking for chart dependencies. You may need to run `helm dependency build` to fetch missing dependencies")
-					if client.DependencyUpdate {
-						man := &downloader.Manager{
-							Out:              out,
-							ChartPath:        chartPath,
-							Keyring:          client.ChartPathOptions.Keyring,
-							SkipUpdate:       false,
-							Getters:          p,
-							RepositoryConfig: settings.RepositoryConfig,
-							RepositoryCache:  settings.RepositoryCache,
-							Debug:            settings.Debug,
-						}
-						if err := man.Update(); err != nil {
-							return err
-						}
-						// Reload the chart with the updated Chart.lock file.
-						if ch, err = loader.Load(chartPath); err != nil {
-							return errors.Wrap(err, "failed reloading chart after repo update")
-						}
-					} else {
-						return err
-					}
-				}
-			}
-
-			if ch.Metadata.Deprecated {
-				warning("This chart is deprecated")
-			}
-
-			// Create context and prepare the handle of SIGTERM
-			ctx := context.Background()
-			ctx, cancel := context.WithCancel(ctx)
-
-			// Set up channel on which to send signal notifications.
-			// We must use a buffered channel or risk missing the signal
-			// if we're not ready to receive when the signal is sent.
-			cSignal := make(chan os.Signal, 2)
-			signal.Notify(cSignal, os.Interrupt, syscall.SIGTERM)
-			go func() {
-				<-cSignal
-				fmt.Fprintf(out, "Release %s has been cancelled.\n", args[0])
-				cancel()
-			}()
-
-			rel, err := client.RunWithContext(ctx, args[0], ch, vals)
-			if err != nil {
-				return errors.Wrap(err, "UPGRADE FAILED")
-			}
-
 			if outfmt == output.Table {
 				fmt.Fprintf(out, "Release %q has been upgraded. Happy Helming!\n", args[0])
 			}
@@ -249,4 +139,154 @@ func newUpgradeCmd(cfg *action.Configuration, out io.Writer) *cobra.Command {
 	}
 
 	return cmd
+}
+
+func runUpgradeWithSignalWait(args []string, client *action.Upgrade, valueOpts *values.Options, createNamespace bool, out io.Writer) (*release.Release, error) {
+	client.Namespace = settings.Namespace()
+	client.DemeterAppSuite = settings.DemeterAppSuite
+	client.DemeterCluster = settings.DemeterCluster
+
+	if client.Install {
+		if rel, continueToUpgrade, err := runInstallWhenUpgrade(args, client, valueOpts, createNamespace, out); !continueToUpgrade {
+			return rel, err
+		}
+	}
+
+	// Create context and prepare the handle of SIGTERM
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+
+	// Set up channel on which to send signal notifications.
+	// We must use a buffered channel or risk missing the signal
+	// if we're not ready to receive when the signal is sent.
+	cSignal := make(chan os.Signal, 2)
+	signal.Notify(cSignal, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-cSignal
+		fmt.Fprintf(out, "Release %s has been cancelled.\n", args[0])
+		cancel()
+	}()
+
+	return RunUpgrade(ctx, client.Namespace, client.DemeterAppSuite, client.DemeterCluster, args[0], args[1], client, valueOpts, out)
+}
+
+func runInstallWhenUpgrade(args []string, client *action.Upgrade, valueOpts *values.Options, createNamespace bool, out io.Writer) (rel *release.Release, continueToUpgrade bool, err error) {
+	var outfmt output.Format
+	var cfg = client.Configuration()
+
+	// Fixes #7002 - Support reading values from STDIN for `upgrade` command
+	// Must load values AFTER determining if we have to call install so that values loaded from stdin are are not read twice
+	// If a release does not exist, install it.
+	histClient := action.NewHistory(cfg)
+	histClient.Max = 1
+	_, err = histClient.Run(args[0])
+	if err == nil {
+		return nil, true, nil
+	}
+	if !errors.Is(err, driver.ErrReleaseNotFound) {
+		return nil, false, err
+	}
+	// Only print this to stdout for table output
+	if outfmt == output.Table {
+		fmt.Fprintf(out, "Release %q does not exist. Installing it now.\n", args[0])
+	}
+	instClient := action.NewInstall(cfg)
+	instClient.CreateNamespace = createNamespace
+	instClient.ChartPathOptions = client.ChartPathOptions
+	instClient.DryRun = client.DryRun
+	instClient.DisableHooks = client.DisableHooks
+	instClient.SkipCRDs = client.SkipCRDs
+	instClient.Timeout = client.Timeout
+	instClient.Wait = client.Wait
+	instClient.WaitForJobs = client.WaitForJobs
+	instClient.Devel = client.Devel
+	instClient.Namespace = client.Namespace
+	instClient.Atomic = client.Atomic
+	instClient.PostRenderer = client.PostRenderer
+	instClient.DisableOpenAPIValidation = client.DisableOpenAPIValidation
+	instClient.SubNotes = client.SubNotes
+	instClient.Description = client.Description
+
+	rel, err = runInstallWithSignalWait(args, instClient, valueOpts, out)
+	if err != nil {
+		return nil, false, err
+	}
+	return rel, false, nil
+	//showDesc := client.DryRun
+	//return outfmt.Write(out, &statusPrinter{rel, settings.Debug, showDesc})
+}
+
+func RunUpgrade(
+	ctx context.Context,
+	namespace string,
+	appsuiteName string,
+	clusterName string,
+	releaseName string,
+	chartPath string,
+	client *action.Upgrade,
+	valueOpts *values.Options,
+	out io.Writer,
+) (*release.Release, error) {
+
+	client.Namespace = namespace
+	client.DemeterAppSuite = appsuiteName
+	client.DemeterCluster = clusterName
+
+	if client.Version == "" && client.Devel {
+		debug("setting version to >0.0.0-0")
+		client.Version = ">0.0.0-0"
+	}
+
+	chartPath, err := client.ChartPathOptions.LocateChart(chartPath, settings)
+	if err != nil {
+		return nil, err
+	}
+
+	p := getter.All(settings)
+	vals, err := valueOpts.MergeValues(p)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check chart dependencies to make sure all are present in /charts
+	ch, err := loader.Load(chartPath)
+	if err != nil {
+		return nil, err
+	}
+	if req := ch.Metadata.Dependencies; req != nil {
+		if err := action.CheckDependencies(ch, req); err != nil {
+			err = errors.Wrap(err, "An error occurred while checking for chart dependencies. You may need to run `helm dependency build` to fetch missing dependencies")
+			if client.DependencyUpdate {
+				man := &downloader.Manager{
+					Out:              out,
+					ChartPath:        chartPath,
+					Keyring:          client.ChartPathOptions.Keyring,
+					SkipUpdate:       false,
+					Getters:          p,
+					RepositoryConfig: settings.RepositoryConfig,
+					RepositoryCache:  settings.RepositoryCache,
+					Debug:            settings.Debug,
+				}
+				if err := man.Update(); err != nil {
+					return nil, err
+				}
+				// Reload the chart with the updated Chart.lock file.
+				if ch, err = loader.Load(chartPath); err != nil {
+					return nil, errors.Wrap(err, "failed reloading chart after repo update")
+				}
+			} else {
+				return nil, err
+			}
+		}
+	}
+
+	if ch.Metadata.Deprecated {
+		warning("This chart is deprecated")
+	}
+
+	rel, err := client.RunWithContext(ctx, releaseName, ch, vals)
+	if err != nil {
+		return nil, errors.Wrap(err, "UPGRADE FAILED")
+	}
+	return rel, nil
 }
