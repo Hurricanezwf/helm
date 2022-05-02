@@ -122,10 +122,7 @@ func newInstallCmd(cfg *action.Configuration, out io.Writer) *cobra.Command {
 			return compInstall(args, toComplete, client)
 		},
 		RunE: func(_ *cobra.Command, args []string) error {
-			client.DemeterAppSuite = settings.DemeterAppSuite
-			client.DemeterCluster = settings.DemeterCluster
-
-			rel, err := runInstall(args, client, valueOpts, out)
+			rel, err := runInstallWithSignalWait(args, client, valueOpts, out)
 			if err != nil {
 				return errors.Wrap(err, "INSTALLATION FAILED")
 			}
@@ -178,20 +175,54 @@ func addInstallFlags(cmd *cobra.Command, f *pflag.FlagSet, client *action.Instal
 	}
 }
 
-func runInstall(args []string, client *action.Install, valueOpts *values.Options, out io.Writer) (*release.Release, error) {
+func runInstallWithSignalWait(args []string, client *action.Install, valueOpts *values.Options, out io.Writer) (*release.Release, error) {
+	name, chart, err := client.NameAndChart(args)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create context and prepare the handle of SIGTERM
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+
+	// Set up channel on which to send signal notifications.
+	// We must use a buffered channel or risk missing the signal
+	// if we're not ready to receive when the signal is sent.
+	cSignal := make(chan os.Signal, 2)
+	signal.Notify(cSignal, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-cSignal
+		fmt.Fprintf(out, "Release %s has been cancelled.\n", args[0])
+		cancel()
+	}()
+
+	return RunInstall(ctx, settings.Namespace(), settings.DemeterAppSuite, settings.DemeterCluster, name, chart, client, valueOpts, out)
+}
+
+func RunInstall(
+	ctx context.Context,
+	namespace string,
+	appsuiteName string,
+	clusterName string,
+	releaseName string,
+	chartPath string,
+	client *action.Install,
+	valueOpts *values.Options,
+	out io.Writer,
+) (*release.Release, error) {
+
 	debug("Original chart version: %q", client.Version)
 	if client.Version == "" && client.Devel {
 		debug("setting version to >0.0.0-0")
 		client.Version = ">0.0.0-0"
 	}
 
-	name, chart, err := client.NameAndChart(args)
-	if err != nil {
-		return nil, err
-	}
-	client.ReleaseName = name
+	client.Namespace = namespace
+	client.DemeterAppSuite = appsuiteName
+	client.DemeterCluster = clusterName
+	client.ReleaseName = releaseName
 
-	cp, err := client.ChartPathOptions.LocateChart(chart, settings)
+	cp, err := client.ChartPathOptions.LocateChart(chartPath, settings)
 	if err != nil {
 		return nil, err
 	}
@@ -247,23 +278,6 @@ func runInstall(args []string, client *action.Install, valueOpts *values.Options
 			}
 		}
 	}
-
-	client.Namespace = settings.Namespace()
-
-	// Create context and prepare the handle of SIGTERM
-	ctx := context.Background()
-	ctx, cancel := context.WithCancel(ctx)
-
-	// Set up channel on which to send signal notifications.
-	// We must use a buffered channel or risk missing the signal
-	// if we're not ready to receive when the signal is sent.
-	cSignal := make(chan os.Signal, 2)
-	signal.Notify(cSignal, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-cSignal
-		fmt.Fprintf(out, "Release %s has been cancelled.\n", args[0])
-		cancel()
-	}()
 
 	return client.RunWithContext(ctx, chartRequested, vals)
 }

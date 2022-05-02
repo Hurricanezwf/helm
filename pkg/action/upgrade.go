@@ -107,6 +107,10 @@ type Upgrade struct {
 	Lock sync.Mutex
 }
 
+func (u *Upgrade) Configuration() *Configuration {
+	return u.cfg
+}
+
 type resultMessage struct {
 	r *release.Release
 	e error
