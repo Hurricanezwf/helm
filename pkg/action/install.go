@@ -32,11 +32,8 @@ import (
 
 	"github.com/Masterminds/sprig/v3"
 	"github.com/pkg/errors"
-	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/cli-runtime/pkg/resource"
-	"sigs.k8s.io/yaml"
 
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chartutil"
@@ -302,34 +299,43 @@ func (i *Install) RunWithContext(ctx context.Context, chrt *chart.Chart, vals ma
 
 	// Bail out here if it is a dry run
 	if i.DryRun {
-		rel.Info.Description = "Dry run complete"
+		// Note: Comment by zwf because I want to print the diff message.
+		// rel.Info.Description = "Dry run complete"
+		diffmsg, err := i.diffInstall(&UpdateResult{
+			Created: resources,
+		})
+		if err != nil {
+			return nil, err
+		}
+		rel.Info.Description = "\n" + diffmsg
 		return rel, nil
 	}
 
 	if i.CreateNamespace {
-		ns := &v1.Namespace{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "v1",
-				Kind:       "Namespace",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: i.Namespace,
-				Labels: map[string]string{
-					"name": i.Namespace,
-				},
-			},
-		}
-		buf, err := yaml.Marshal(ns)
-		if err != nil {
-			return nil, err
-		}
-		resourceList, err := i.cfg.KubeClient.Build(bytes.NewBuffer(buf), true)
-		if err != nil {
-			return nil, err
-		}
-		if _, err := i.cfg.KubeClient.Create(resourceList); err != nil && !apierrors.IsAlreadyExists(err) {
-			return nil, err
-		}
+		return nil, errors.New("we do not support this feature. please contact the admin")
+		//ns := &v1.Namespace{
+		//	TypeMeta: metav1.TypeMeta{
+		//		APIVersion: "v1",
+		//		Kind:       "Namespace",
+		//	},
+		//	ObjectMeta: metav1.ObjectMeta{
+		//		Name: i.Namespace,
+		//		Labels: map[string]string{
+		//			"name": i.Namespace,
+		//		},
+		//	},
+		//}
+		//buf, err := yaml.Marshal(ns)
+		//if err != nil {
+		//	return nil, err
+		//}
+		//resourceList, err := i.cfg.KubeClient.Build(bytes.NewBuffer(buf), true)
+		//if err != nil {
+		//	return nil, err
+		//}
+		//if _, err := i.cfg.KubeClient.Create(resourceList); err != nil && !apierrors.IsAlreadyExists(err) {
+		//	return nil, err
+		//}
 	}
 
 	// If Replace is true, we need to supercede the last release.
@@ -355,6 +361,14 @@ func (i *Install) RunWithContext(ctx context.Context, chrt *chart.Chart, vals ma
 	result := <-rChan
 	//start preformInstall go routine
 	return result.r, result.e
+}
+
+func (i *Install) diffInstall(result *UpdateResult) (string, error) {
+	diffmsg, err := DiffUpdateResult(result)
+	if err != nil {
+		return "", fmt.Errorf("failed to diff install, %w", err)
+	}
+	return string(diffmsg), nil
 }
 
 func (i *Install) performInstall(c chan<- resultMessage, rel *release.Release, toBeAdopted kube.ResourceList, resources kube.ResourceList) {
@@ -470,9 +484,10 @@ func (i *Install) availableName() error {
 	if err := chartutil.ValidateReleaseName(start); err != nil {
 		return errors.Wrapf(err, "release name %q", start)
 	}
-	if i.DryRun {
-		return nil
-	}
+	// Note: Comment by zwf because I need to print an error if the release name is conflict.
+	//if i.DryRun {
+	//	return nil
+	//}
 
 	h, err := i.cfg.Releases.History(start)
 	if err != nil || len(h) < 1 {
