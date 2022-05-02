@@ -26,6 +26,7 @@ import (
 
 	"helm.sh/helm/v3/cmd/helm/require"
 	"helm.sh/helm/v3/pkg/action"
+	"helm.sh/helm/v3/pkg/cli/output"
 )
 
 const rollbackDesc = `
@@ -39,7 +40,8 @@ To see revision numbers, run 'helm history RELEASE'.
 `
 
 func newRollbackCmd(cfg *action.Configuration, out io.Writer) *cobra.Command {
-	client := action.NewRollback(cfg)
+	var client = action.NewRollback(cfg)
+	var outfmt output.Format
 
 	cmd := &cobra.Command{
 		Use:   "rollback <RELEASE> [REVISION]",
@@ -66,12 +68,14 @@ func newRollbackCmd(cfg *action.Configuration, out io.Writer) *cobra.Command {
 				client.Version = ver
 			}
 
-			if err := client.Run(args[0]); err != nil {
+			rel, err := client.Run(args[0])
+			if err != nil {
 				return err
 			}
-
 			fmt.Fprintf(out, "Rollback was a success! Happy Helming!\n")
-			return nil
+			showDesc := client.DryRun
+			return outfmt.Write(out, &statusPrinter{rel, settings.Debug, showDesc})
+			//return nil
 		},
 	}
 

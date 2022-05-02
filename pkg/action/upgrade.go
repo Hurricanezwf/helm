@@ -315,11 +315,17 @@ func (u *Upgrade) performUpgrade(ctx context.Context, originalRelease, upgradedR
 
 	if u.DryRun {
 		u.cfg.Log("dry run for %s", upgradedRelease.Name)
-		if len(u.Description) > 0 {
-			upgradedRelease.Info.Description = u.Description
-		} else {
-			upgradedRelease.Info.Description = "Dry run complete"
+		// Note: Comment by zwf because I want to show the diff message.
+		//if len(u.Description) > 0 {
+		//	upgradedRelease.Info.Description = u.Description
+		//} else {
+		//	upgradedRelease.Info.Description = "Dry run complete"
+		//}
+		diffmsg, err := u.diffUpgrade(current, target) // 由于上面更新了 current 的内容，所以需要重新计算 diff 依据
+		if err != nil {
+			return nil, err
 		}
+		upgradedRelease.Info.Description = "\n" + diffmsg
 		return upgradedRelease, nil
 	}
 
@@ -339,6 +345,40 @@ func (u *Upgrade) performUpgrade(ctx context.Context, originalRelease, upgradedR
 	case result := <-ctxChan:
 		return result.r, result.e
 	}
+}
+
+func (u *Upgrade) diffUpgrade(current, target kube.ResourceList) (string, error) {
+	result := &UpdateResult{
+		Created: target.Difference(current),
+		Deleted: current.Difference(target),
+	}
+
+	err := current.Intersect(target).Visit(func(currentInfo *resource.Info, err error) error {
+		if err != nil {
+			return err
+		}
+		if currentInfo == nil {
+			return errors.New("nil resource info was found from current")
+		}
+		targetInfo := target.Get(currentInfo)
+		if targetInfo == nil {
+			return fmt.Errorf("no resource info `%s` was found in targets", currentInfo.ObjectName())
+		}
+		result.Updated = append(result.Updated, UpdatedInfo{
+			From: currentInfo,
+			To:   targetInfo,
+		})
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+
+	diffmsg, err := DiffUpdateResult(result, u.Force)
+	if err != nil {
+		return "", fmt.Errorf("failed to diff upgrade, %w", err)
+	}
+	return string(diffmsg), nil
 }
 
 // Function used to lock the Mutex, this is important for the case when the atomic flag is set.
@@ -480,7 +520,7 @@ func (u *Upgrade) failRelease(rel *release.Release, created kube.ResourceList, e
 		rollin.Recreate = u.Recreate
 		rollin.Force = u.Force
 		rollin.Timeout = u.Timeout
-		if rollErr := rollin.Run(rel.Name); rollErr != nil {
+		if _, rollErr := rollin.Run(rel.Name); rollErr != nil {
 			return rel, errors.Wrapf(rollErr, "an error occurred while rolling back the release. original upgrade error: %s", err)
 		}
 		return rel, errors.Wrapf(err, "release %s failed, and has been rolled back due to atomic being set", rel.Name)

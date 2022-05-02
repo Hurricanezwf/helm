@@ -51,11 +51,11 @@ func TestCheckOwnership(t *testing.T) {
 
 	// Verify that a resource that lacks labels/annotations is not owned
 	err := checkOwnership(deployFoo.Object, "rel-a", "ns-a")
-	assert.EqualError(t, err, `invalid ownership metadata; label validation error: missing key "app.kubernetes.io/managed-by": must be set to "Helm"; annotation validation error: missing key "meta.helm.sh/release-name": must be set to "rel-a"; annotation validation error: missing key "meta.helm.sh/release-namespace": must be set to "ns-a"`)
+	assert.EqualError(t, err, `invalid ownership metadata; label validation error: missing key "app.kubernetes.io/managed-by": must be set to "demeter"; annotation validation error: missing key "meta.helm.sh/release-name": must be set to "rel-a"; annotation validation error: missing key "meta.helm.sh/release-namespace": must be set to "ns-a"`)
 
 	// Set managed by label and verify annotation error message
 	_ = accessor.SetLabels(deployFoo.Object, map[string]string{
-		appManagedByLabel: appManagedByHelm,
+		appManagedByLabel: appManagedByDemeter,
 	})
 	err = checkOwnership(deployFoo.Object, "rel-a", "ns-a")
 	assert.EqualError(t, err, `invalid ownership metadata; annotation validation error: missing key "meta.helm.sh/release-name": must be set to "rel-a"; annotation validation error: missing key "meta.helm.sh/release-namespace": must be set to "ns-a"`)
@@ -88,36 +88,38 @@ func TestCheckOwnership(t *testing.T) {
 		appManagedByLabel: "helm",
 	})
 	err = checkOwnership(deployFoo.Object, "rel-a", "ns-a")
-	assert.EqualError(t, err, `invalid ownership metadata; label validation error: key "app.kubernetes.io/managed-by" must equal "Helm": current value is "helm"`)
+	assert.EqualError(t, err, `invalid ownership metadata; label validation error: key "app.kubernetes.io/managed-by" must equal "demeter": current value is "helm"`)
 }
 
 func TestSetMetadataVisitor(t *testing.T) {
 	var (
-		err       error
-		deployFoo = newDeploymentResource("foo", "ns-a")
-		deployBar = newDeploymentResource("bar", "ns-a-system")
-		resources = kube.ResourceList{deployFoo, deployBar}
+		err             error
+		demeterAppSuite = "test-appsuite"
+		demeterCluster  = "test-cluster"
+		deployFoo       = newDeploymentResource("foo", "ns-a")
+		deployBar       = newDeploymentResource("bar", "ns-a-system")
+		resources       = kube.ResourceList{deployFoo, deployBar}
 	)
 
 	// Set release tracking metadata and verify no error
-	err = resources.Visit(setMetadataVisitor("rel-a", "ns-a", true))
+	err = resources.Visit(setMetadataVisitor("rel-a", "ns-a", demeterAppSuite, demeterCluster, true))
 	assert.NoError(t, err)
 
 	// Verify that release "b" cannot take ownership of "a"
-	err = resources.Visit(setMetadataVisitor("rel-b", "ns-a", false))
+	err = resources.Visit(setMetadataVisitor("rel-b", "ns-a", demeterAppSuite, demeterCluster, false))
 	assert.Error(t, err)
 
 	// Force release "b" to take ownership
-	err = resources.Visit(setMetadataVisitor("rel-b", "ns-a", true))
+	err = resources.Visit(setMetadataVisitor("rel-b", "ns-a", demeterAppSuite, demeterCluster, true))
 	assert.NoError(t, err)
 
 	// Check that there is now no ownership error when setting metadata without force
-	err = resources.Visit(setMetadataVisitor("rel-b", "ns-a", false))
+	err = resources.Visit(setMetadataVisitor("rel-b", "ns-a", demeterAppSuite, demeterCluster, false))
 	assert.NoError(t, err)
 
 	// Add a new resource that is missing ownership metadata and verify error
 	resources.Append(newDeploymentResource("baz", "default"))
-	err = resources.Visit(setMetadataVisitor("rel-b", "ns-a", false))
+	err = resources.Visit(setMetadataVisitor("rel-b", "ns-a", demeterAppSuite, demeterCluster, false))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), `Deployment "baz" in namespace "" cannot be owned`)
 }

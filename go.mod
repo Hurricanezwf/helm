@@ -12,6 +12,7 @@ require (
 	github.com/asaskevich/govalidator v0.0.0-20200428143746-21a406dcc535
 	github.com/containerd/containerd v1.6.1
 	github.com/cyphar/filepath-securejoin v0.2.3
+	github.com/databus23/helm-diff/v3 v3.4.2
 	github.com/distribution/distribution/v3 v3.0.0-20211118083504-a29a3c99a684
 	github.com/docker/docker v20.10.12+incompatible
 	github.com/evanphx/json-patch v4.12.0+incompatible
@@ -30,8 +31,9 @@ require (
 	github.com/spf13/cobra v1.3.0
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.7.0
+	github.com/tidwall/gjson v1.14.1
+	github.com/tidwall/sjson v1.2.4
 	github.com/xeipuuv/gojsonschema v1.2.0
-	github.com/ziutek/mymysql v1.5.4 // indirect
 	golang.org/x/crypto v0.0.0-20211117183948-ae814b36b871
 	golang.org/x/term v0.0.0-20210927222741-03fcf44c2211
 	k8s.io/api v0.23.5

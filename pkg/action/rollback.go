@@ -23,8 +23,10 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"k8s.io/cli-runtime/pkg/resource"
 
 	"helm.sh/helm/v3/pkg/chartutil"
+	"helm.sh/helm/v3/pkg/kube"
 	"helm.sh/helm/v3/pkg/release"
 	helmtime "helm.sh/helm/v3/pkg/time"
 )
@@ -55,9 +57,9 @@ func NewRollback(cfg *Configuration) *Rollback {
 }
 
 // Run executes 'helm rollback' against the given release.
-func (r *Rollback) Run(name string) error {
+func (r *Rollback) Run(name string) (*release.Release, error) {
 	if err := r.cfg.KubeClient.IsReachable(); err != nil {
-		return err
+		return nil, err
 	}
 
 	r.cfg.Releases.MaxHistory = r.MaxHistory
@@ -65,28 +67,29 @@ func (r *Rollback) Run(name string) error {
 	r.cfg.Log("preparing rollback of %s", name)
 	currentRelease, targetRelease, err := r.prepareRollback(name)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if !r.DryRun {
 		r.cfg.Log("creating rolled back release for %s", name)
 		if err := r.cfg.Releases.Create(targetRelease); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
 	r.cfg.Log("performing rollback of %s", name)
-	if _, err := r.performRollback(currentRelease, targetRelease); err != nil {
-		return err
+	rollbackToRelease, err := r.performRollback(currentRelease, targetRelease)
+	if err != nil {
+		return rollbackToRelease, err
 	}
 
 	if !r.DryRun {
 		r.cfg.Log("updating status for rolled back release for %s", name)
 		if err := r.cfg.Releases.Update(targetRelease); err != nil {
-			return err
+			return rollbackToRelease, err
 		}
 	}
-	return nil
+	return rollbackToRelease, nil
 }
 
 // prepareRollback finds the previous release and prepares a new release object with
@@ -141,11 +144,6 @@ func (r *Rollback) prepareRollback(name string) (*release.Release, *release.Rele
 }
 
 func (r *Rollback) performRollback(currentRelease, targetRelease *release.Release) (*release.Release, error) {
-	if r.DryRun {
-		r.cfg.Log("dry run for %s", targetRelease.Name)
-		return targetRelease, nil
-	}
-
 	current, err := r.cfg.KubeClient.Build(bytes.NewBufferString(currentRelease.Manifest), false)
 	if err != nil {
 		return targetRelease, errors.Wrap(err, "unable to build kubernetes objects from current release manifest")
@@ -153,6 +151,16 @@ func (r *Rollback) performRollback(currentRelease, targetRelease *release.Releas
 	target, err := r.cfg.KubeClient.Build(bytes.NewBufferString(targetRelease.Manifest), false)
 	if err != nil {
 		return targetRelease, errors.Wrap(err, "unable to build kubernetes objects from new release manifest")
+	}
+
+	if r.DryRun {
+		r.cfg.Log("dry run for %s", targetRelease.Name)
+		diffmsg, err := r.diffRollback(current, target)
+		if err != nil {
+			return nil, err
+		}
+		targetRelease.Info.Description = "\n" + diffmsg
+		return targetRelease, nil
 	}
 
 	// pre-rollback hooks
@@ -238,4 +246,38 @@ func (r *Rollback) performRollback(currentRelease, targetRelease *release.Releas
 	targetRelease.Info.Status = release.StatusDeployed
 
 	return targetRelease, nil
+}
+
+func (r *Rollback) diffRollback(current, target kube.ResourceList) (string, error) {
+	result := &UpdateResult{
+		Created: target.Difference(current),
+		Deleted: current.Difference(target),
+	}
+
+	err := current.Intersect(target).Visit(func(currentInfo *resource.Info, err error) error {
+		if err != nil {
+			return err
+		}
+		if currentInfo == nil {
+			return errors.New("nil resource info was found from current")
+		}
+		targetInfo := target.Get(currentInfo)
+		if targetInfo == nil {
+			return fmt.Errorf("no resource info `%s` was found in targets", currentInfo.ObjectName())
+		}
+		result.Updated = append(result.Updated, UpdatedInfo{
+			From: currentInfo,
+			To:   targetInfo,
+		})
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+
+	diffmsg, err := DiffUpdateResult(result, r.Force || r.Recreate)
+	if err != nil {
+		return "", fmt.Errorf("failed to diff rollback, %w", err)
+	}
+	return string(diffmsg), nil
 }
