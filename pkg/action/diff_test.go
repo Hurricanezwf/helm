@@ -135,7 +135,7 @@ func TestDiffUpdateResult(t *testing.T) {
 		Deleted: deletedResourceList,
 	}
 
-	b, err := DiffUpdateResult(updateResult)
+	b, err := DiffUpdateResult(updateResult, false)
 	if err != nil {
 		t.Fatalf("failed to diff update result, %v", err)
 	}

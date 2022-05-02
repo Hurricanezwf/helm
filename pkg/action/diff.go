@@ -30,7 +30,8 @@ type UpdatedInfo struct {
 
 // DiffUpdateResult returns a diff of the update result with `helm diff`.
 // The caller can read the output from the io.Reader.
-func DiffUpdateResult(result *UpdateResult) ([]byte, error) {
+// @forceUpdate indicates if the new object replace the old object.
+func DiffUpdateResult(result *UpdateResult, forceUpdate bool) ([]byte, error) {
 	if result == nil {
 		return nil, errors.New("update result cannot be nil")
 	}
@@ -61,14 +62,18 @@ func DiffUpdateResult(result *UpdateResult) ([]byte, error) {
 			if err != nil {
 				return nil, fmt.Errorf("failed to convert resource info to mapping result, %w", err)
 			}
-			oldIndex[fmt.Sprintf("%s/%s", oldRes.Kind, oldRes.Name)] = oldRes
+			oldIndex[fmt.Sprintf("[FORCE UPDATE FROM OLD] %s/%s", oldRes.Kind, oldRes.Name)] = oldRes
 		}
 		if updated.To != nil {
 			newRes, err := ResourceInfoToMappingResult(updated.To)
 			if err != nil {
 				return nil, fmt.Errorf("failed to convert resource info to mapping result, %w", err)
 			}
-			newIndex[fmt.Sprintf("%s/%s", newRes.Kind, newRes.Name)] = newRes
+			if forceUpdate {
+				newIndex[fmt.Sprintf("[FORCE UPDATE TO NEW] %s/%s", newRes.Kind, newRes.Name)] = newRes
+			} else {
+				newIndex[fmt.Sprintf("%s/%s", newRes.Kind, newRes.Name)] = newRes
+			}
 		}
 	}
 

@@ -364,7 +364,7 @@ func (i *Install) RunWithContext(ctx context.Context, chrt *chart.Chart, vals ma
 }
 
 func (i *Install) diffInstall(result *UpdateResult) (string, error) {
-	diffmsg, err := DiffUpdateResult(result)
+	diffmsg, err := DiffUpdateResult(result, false)
 	if err != nil {
 		return "", fmt.Errorf("failed to diff install, %w", err)
 	}

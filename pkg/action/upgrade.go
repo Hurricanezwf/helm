@@ -364,24 +364,17 @@ func (u *Upgrade) diffUpgrade(current, target kube.ResourceList) (string, error)
 		if targetInfo == nil {
 			return fmt.Errorf("no resource info `%s` was found in targets", currentInfo.ObjectName())
 		}
-		if u.Force {
-			result.Updated = append(result.Updated, UpdatedInfo{
-				From: nil,
-				To:   targetInfo,
-			})
-		} else {
-			result.Updated = append(result.Updated, UpdatedInfo{
-				From: currentInfo,
-				To:   targetInfo,
-			})
-		}
+		result.Updated = append(result.Updated, UpdatedInfo{
+			From: currentInfo,
+			To:   targetInfo,
+		})
 		return nil
 	})
 	if err != nil {
 		return "", err
 	}
 
-	diffmsg, err := DiffUpdateResult(result)
+	diffmsg, err := DiffUpdateResult(result, u.Force)
 	if err != nil {
 		return "", fmt.Errorf("failed to diff upgrade, %w", err)
 	}
@@ -527,7 +520,7 @@ func (u *Upgrade) failRelease(rel *release.Release, created kube.ResourceList, e
 		rollin.Recreate = u.Recreate
 		rollin.Force = u.Force
 		rollin.Timeout = u.Timeout
-		if rollErr := rollin.Run(rel.Name); rollErr != nil {
+		if _, rollErr := rollin.Run(rel.Name); rollErr != nil {
 			return rel, errors.Wrapf(rollErr, "an error occurred while rolling back the release. original upgrade error: %s", err)
 		}
 		return rel, errors.Wrapf(err, "release %s failed, and has been rolled back due to atomic being set", rel.Name)
