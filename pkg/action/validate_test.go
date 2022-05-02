@@ -51,7 +51,7 @@ func TestCheckOwnership(t *testing.T) {
 
 	// Verify that a resource that lacks labels/annotations is not owned
 	err := checkOwnership(deployFoo.Object, "rel-a", "ns-a")
-	assert.EqualError(t, err, `invalid ownership metadata; label validation error: missing key "app.kubernetes.io/managed-by": must be set to "Helm"; annotation validation error: missing key "meta.helm.sh/release-name": must be set to "rel-a"; annotation validation error: missing key "meta.helm.sh/release-namespace": must be set to "ns-a"`)
+	assert.EqualError(t, err, `invalid ownership metadata; label validation error: missing key "app.kubernetes.io/managed-by": must be set to "demeter"; annotation validation error: missing key "meta.helm.sh/release-name": must be set to "rel-a"; annotation validation error: missing key "meta.helm.sh/release-namespace": must be set to "ns-a"`)
 
 	// Set managed by label and verify annotation error message
 	_ = accessor.SetLabels(deployFoo.Object, map[string]string{
@@ -88,7 +88,7 @@ func TestCheckOwnership(t *testing.T) {
 		appManagedByLabel: "helm",
 	})
 	err = checkOwnership(deployFoo.Object, "rel-a", "ns-a")
-	assert.EqualError(t, err, `invalid ownership metadata; label validation error: key "app.kubernetes.io/managed-by" must equal "Helm": current value is "helm"`)
+	assert.EqualError(t, err, `invalid ownership metadata; label validation error: key "app.kubernetes.io/managed-by" must equal "demeter": current value is "helm"`)
 }
 
 func TestSetMetadataVisitor(t *testing.T) {

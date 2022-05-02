@@ -252,7 +252,7 @@ func TestInstallRelease_DryRun(t *testing.T) {
 	is.Error(err)
 	is.Len(res.Hooks, 1)
 	is.True(res.Hooks[0].LastRun.CompletedAt.IsZero(), "expect hook to not be marked as run")
-	is.Equal(res.Info.Description, "Dry run complete")
+	is.Equal(res.Info.Description, "\n")
 }
 
 // Regression test for #7955: Lookup must not connect to Kubernetes on a dry-run.
