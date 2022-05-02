@@ -152,6 +152,12 @@ func runUpgradeWithSignalWait(args []string, client *action.Upgrade, valueOpts *
 		}
 	}
 
+	p := getter.All(settings)
+	vals, err := valueOpts.MergeValues(p)
+	if err != nil {
+		return nil, err
+	}
+
 	// Create context and prepare the handle of SIGTERM
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
@@ -167,7 +173,7 @@ func runUpgradeWithSignalWait(args []string, client *action.Upgrade, valueOpts *
 		cancel()
 	}()
 
-	return RunUpgrade(ctx, client.Namespace, client.DemeterAppSuite, client.DemeterCluster, args[0], args[1], client, valueOpts, out)
+	return RunUpgrade(ctx, client.Namespace, client.DemeterAppSuite, client.DemeterCluster, args[0], args[1], client, vals, out)
 }
 
 func runInstallWhenUpgrade(args []string, client *action.Upgrade, valueOpts *values.Options, createNamespace bool, out io.Writer) (rel *release.Release, continueToUpgrade bool, err error) {
@@ -191,6 +197,8 @@ func runInstallWhenUpgrade(args []string, client *action.Upgrade, valueOpts *val
 		fmt.Fprintf(out, "Release %q does not exist. Installing it now.\n", args[0])
 	}
 	instClient := action.NewInstall(cfg)
+	instClient.DemeterAppSuite = client.DemeterAppSuite
+	instClient.DemeterCluster = client.DemeterCluster
 	instClient.CreateNamespace = createNamespace
 	instClient.ChartPathOptions = client.ChartPathOptions
 	instClient.DryRun = client.DryRun
@@ -224,7 +232,7 @@ func RunUpgrade(
 	releaseName string,
 	chartPath string,
 	client *action.Upgrade,
-	valueOpts *values.Options,
+	values map[string]interface{},
 	out io.Writer,
 ) (*release.Release, error) {
 
@@ -242,18 +250,13 @@ func RunUpgrade(
 		return nil, err
 	}
 
-	p := getter.All(settings)
-	vals, err := valueOpts.MergeValues(p)
-	if err != nil {
-		return nil, err
-	}
-
 	// Check chart dependencies to make sure all are present in /charts
 	ch, err := loader.Load(chartPath)
 	if err != nil {
 		return nil, err
 	}
 	if req := ch.Metadata.Dependencies; req != nil {
+		p := getter.All(settings)
 		if err := action.CheckDependencies(ch, req); err != nil {
 			err = errors.Wrap(err, "An error occurred while checking for chart dependencies. You may need to run `helm dependency build` to fetch missing dependencies")
 			if client.DependencyUpdate {
@@ -284,7 +287,7 @@ func RunUpgrade(
 		warning("This chart is deprecated")
 	}
 
-	rel, err := client.RunWithContext(ctx, releaseName, ch, vals)
+	rel, err := client.RunWithContext(ctx, releaseName, ch, values)
 	if err != nil {
 		return nil, errors.Wrap(err, "UPGRADE FAILED")
 	}

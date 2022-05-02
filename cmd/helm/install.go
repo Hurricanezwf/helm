@@ -181,6 +181,12 @@ func runInstallWithSignalWait(args []string, client *action.Install, valueOpts *
 		return nil, err
 	}
 
+	p := getter.All(settings)
+	vals, err := valueOpts.MergeValues(p)
+	if err != nil {
+		return nil, err
+	}
+
 	// Create context and prepare the handle of SIGTERM
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
@@ -196,7 +202,7 @@ func runInstallWithSignalWait(args []string, client *action.Install, valueOpts *
 		cancel()
 	}()
 
-	return RunInstall(ctx, settings.Namespace(), settings.DemeterAppSuite, settings.DemeterCluster, name, chart, client, valueOpts, out)
+	return RunInstall(ctx, settings.Namespace(), settings.DemeterAppSuite, settings.DemeterCluster, name, chart, client, vals, out)
 }
 
 func RunInstall(
@@ -207,7 +213,7 @@ func RunInstall(
 	releaseName string,
 	chartPath string,
 	client *action.Install,
-	valueOpts *values.Options,
+	values map[string]interface{},
 	out io.Writer,
 ) (*release.Release, error) {
 
@@ -229,12 +235,6 @@ func RunInstall(
 
 	debug("CHART PATH: %s\n", cp)
 
-	p := getter.All(settings)
-	vals, err := valueOpts.MergeValues(p)
-	if err != nil {
-		return nil, err
-	}
-
 	// Check chart dependencies to make sure all are present in /charts
 	chartRequested, err := loader.Load(cp)
 	if err != nil {
@@ -250,6 +250,8 @@ func RunInstall(
 	}
 
 	if req := chartRequested.Metadata.Dependencies; req != nil {
+		p := getter.All(settings)
+
 		// If CheckDependencies returns an error, we have unfulfilled dependencies.
 		// As of Helm 2.4.0, this is treated as a stopping condition:
 		// https://github.com/helm/helm/issues/2209
@@ -279,7 +281,7 @@ func RunInstall(
 		}
 	}
 
-	return client.RunWithContext(ctx, chartRequested, vals)
+	return client.RunWithContext(ctx, chartRequested, values)
 }
 
 // checkIfInstallable validates if a chart can be installed
