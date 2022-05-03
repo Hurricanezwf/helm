@@ -121,8 +121,8 @@ func (s *EnvSettings) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.RegistryConfig, "registry-config", s.RegistryConfig, "path to the registry config file")
 	fs.StringVar(&s.RepositoryConfig, "repository-config", s.RepositoryConfig, "path to the file containing repository names and URLs")
 	fs.StringVar(&s.RepositoryCache, "repository-cache", s.RepositoryCache, "path to the file containing cached repository indexes")
-	fs.StringVar(&s.DemeterAppSuite, "demeter-appsuite", "", "appsuite name in the demeter")
-	fs.StringVar(&s.DemeterCluster, "demeter-cluster", "", "cluster name in the demeter")
+	fs.StringVar(&s.DemeterAppSuite, "appsuite", "", "appsuite name in the demeter")
+	fs.StringVar(&s.DemeterCluster, "cluster", "", "cluster name in the demeter")
 }
 
 func envOr(name, def string) string {

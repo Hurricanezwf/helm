@@ -31,13 +31,12 @@ import (
 
 	"helm.sh/helm/v3/cmd/helm/require"
 	"helm.sh/helm/v3/pkg/action"
-	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/cli/output"
 	"helm.sh/helm/v3/pkg/cli/values"
-	"helm.sh/helm/v3/pkg/downloader"
 	"helm.sh/helm/v3/pkg/getter"
 	"helm.sh/helm/v3/pkg/release"
 	"helm.sh/helm/v3/pkg/storage/driver"
+	"helm.sh/helm/v3/src/helm"
 )
 
 const upgradeDesc = `
@@ -173,7 +172,20 @@ func runUpgradeWithSignalWait(args []string, client *action.Upgrade, valueOpts *
 		cancel()
 	}()
 
-	return RunUpgrade(ctx, client.Namespace, client.DemeterAppSuite, client.DemeterCluster, args[0], args[1], client, vals, out)
+	upgradecmd := helm.CMDUpgrade{
+		Namespace:    client.Namespace,
+		AppSuiteName: client.DemeterAppSuite,
+		ClusterName:  client.DemeterCluster,
+		ReleaseName:  args[0],
+		ChartPath:    args[1],
+		Values:       vals,
+		Client:       client,
+		Settings:     settings,
+		Out:          out,
+		DebugLogFunc: debug,
+		WarnLogFunc:  warning,
+	}
+	return upgradecmd.RunUpgrade(ctx)
 }
 
 func runInstallWhenUpgrade(args []string, client *action.Upgrade, valueOpts *values.Options, createNamespace bool, out io.Writer) (rel *release.Release, continueToUpgrade bool, err error) {
@@ -222,74 +234,4 @@ func runInstallWhenUpgrade(args []string, client *action.Upgrade, valueOpts *val
 	return rel, false, nil
 	//showDesc := client.DryRun
 	//return outfmt.Write(out, &statusPrinter{rel, settings.Debug, showDesc})
-}
-
-func RunUpgrade(
-	ctx context.Context,
-	namespace string,
-	appsuiteName string,
-	clusterName string,
-	releaseName string,
-	chartPath string,
-	client *action.Upgrade,
-	values map[string]interface{},
-	out io.Writer,
-) (*release.Release, error) {
-
-	client.Namespace = namespace
-	client.DemeterAppSuite = appsuiteName
-	client.DemeterCluster = clusterName
-
-	if client.Version == "" && client.Devel {
-		debug("setting version to >0.0.0-0")
-		client.Version = ">0.0.0-0"
-	}
-
-	chartPath, err := client.ChartPathOptions.LocateChart(chartPath, settings)
-	if err != nil {
-		return nil, err
-	}
-
-	// Check chart dependencies to make sure all are present in /charts
-	ch, err := loader.Load(chartPath)
-	if err != nil {
-		return nil, err
-	}
-	if req := ch.Metadata.Dependencies; req != nil {
-		p := getter.All(settings)
-		if err := action.CheckDependencies(ch, req); err != nil {
-			err = errors.Wrap(err, "An error occurred while checking for chart dependencies. You may need to run `helm dependency build` to fetch missing dependencies")
-			if client.DependencyUpdate {
-				man := &downloader.Manager{
-					Out:              out,
-					ChartPath:        chartPath,
-					Keyring:          client.ChartPathOptions.Keyring,
-					SkipUpdate:       false,
-					Getters:          p,
-					RepositoryConfig: settings.RepositoryConfig,
-					RepositoryCache:  settings.RepositoryCache,
-					Debug:            settings.Debug,
-				}
-				if err := man.Update(); err != nil {
-					return nil, err
-				}
-				// Reload the chart with the updated Chart.lock file.
-				if ch, err = loader.Load(chartPath); err != nil {
-					return nil, errors.Wrap(err, "failed reloading chart after repo update")
-				}
-			} else {
-				return nil, err
-			}
-		}
-	}
-
-	if ch.Metadata.Deprecated {
-		warning("This chart is deprecated")
-	}
-
-	rel, err := client.RunWithContext(ctx, releaseName, ch, values)
-	if err != nil {
-		return nil, errors.Wrap(err, "UPGRADE FAILED")
-	}
-	return rel, nil
 }

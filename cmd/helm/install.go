@@ -32,13 +32,11 @@ import (
 
 	"helm.sh/helm/v3/cmd/helm/require"
 	"helm.sh/helm/v3/pkg/action"
-	"helm.sh/helm/v3/pkg/chart"
-	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/cli/output"
 	"helm.sh/helm/v3/pkg/cli/values"
-	"helm.sh/helm/v3/pkg/downloader"
 	"helm.sh/helm/v3/pkg/getter"
 	"helm.sh/helm/v3/pkg/release"
+	"helm.sh/helm/v3/src/helm"
 )
 
 const installDesc = `
@@ -202,97 +200,20 @@ func runInstallWithSignalWait(args []string, client *action.Install, valueOpts *
 		cancel()
 	}()
 
-	return RunInstall(ctx, settings.Namespace(), settings.DemeterAppSuite, settings.DemeterCluster, name, chart, client, vals, out)
-}
-
-func RunInstall(
-	ctx context.Context,
-	namespace string,
-	appsuiteName string,
-	clusterName string,
-	releaseName string,
-	chartPath string,
-	client *action.Install,
-	values map[string]interface{},
-	out io.Writer,
-) (*release.Release, error) {
-
-	debug("Original chart version: %q", client.Version)
-	if client.Version == "" && client.Devel {
-		debug("setting version to >0.0.0-0")
-		client.Version = ">0.0.0-0"
+	installcmd := helm.CMDInstall{
+		Namespace:    settings.Namespace(),
+		AppSuiteName: settings.DemeterAppSuite,
+		ClusterName:  settings.DemeterCluster,
+		ReleaseName:  name,
+		ChartPath:    chart,
+		Values:       vals,
+		Client:       client,
+		Settings:     settings,
+		Out:          out,
+		DebugLogFunc: debug,
+		WarnLogFunc:  warning,
 	}
-
-	client.Namespace = namespace
-	client.DemeterAppSuite = appsuiteName
-	client.DemeterCluster = clusterName
-	client.ReleaseName = releaseName
-
-	cp, err := client.ChartPathOptions.LocateChart(chartPath, settings)
-	if err != nil {
-		return nil, err
-	}
-
-	debug("CHART PATH: %s\n", cp)
-
-	// Check chart dependencies to make sure all are present in /charts
-	chartRequested, err := loader.Load(cp)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := checkIfInstallable(chartRequested); err != nil {
-		return nil, err
-	}
-
-	if chartRequested.Metadata.Deprecated {
-		warning("This chart is deprecated")
-	}
-
-	if req := chartRequested.Metadata.Dependencies; req != nil {
-		p := getter.All(settings)
-
-		// If CheckDependencies returns an error, we have unfulfilled dependencies.
-		// As of Helm 2.4.0, this is treated as a stopping condition:
-		// https://github.com/helm/helm/issues/2209
-		if err := action.CheckDependencies(chartRequested, req); err != nil {
-			err = errors.Wrap(err, "An error occurred while checking for chart dependencies. You may need to run `helm dependency build` to fetch missing dependencies")
-			if client.DependencyUpdate {
-				man := &downloader.Manager{
-					Out:              out,
-					ChartPath:        cp,
-					Keyring:          client.ChartPathOptions.Keyring,
-					SkipUpdate:       false,
-					Getters:          p,
-					RepositoryConfig: settings.RepositoryConfig,
-					RepositoryCache:  settings.RepositoryCache,
-					Debug:            settings.Debug,
-				}
-				if err := man.Update(); err != nil {
-					return nil, err
-				}
-				// Reload the chart with the updated Chart.lock file.
-				if chartRequested, err = loader.Load(cp); err != nil {
-					return nil, errors.Wrap(err, "failed reloading chart after repo update")
-				}
-			} else {
-				return nil, err
-			}
-		}
-	}
-
-	return client.RunWithContext(ctx, chartRequested, values)
-}
-
-// checkIfInstallable validates if a chart can be installed
-//
-// Application chart type is only installable
-func checkIfInstallable(ch *chart.Chart) error {
-	switch ch.Metadata.Type {
-	case "", "application":
-		return nil
-	}
-	return errors.Errorf("%s charts are not installable", ch.Metadata.Type)
+	return installcmd.RunInstall(ctx)
 }
 
 // Provide dynamic auto-completion for the install and template commands
