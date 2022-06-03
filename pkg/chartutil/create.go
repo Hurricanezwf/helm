@@ -472,9 +472,7 @@ Selector labels
 */}}
 {{- define "<CHARTNAME>.selectorLabels" -}}
 app.kubernetes.io/name: {{ include "<CHARTNAME>.name" . }}
-app.kubernetes.io/release: {{ .Release.Name }}
-app.kubernetes.io/cluster: {{ required "the demeter cluster is required" .Release.DemeterCluster }}
-app.kubernetes.io/appsuite: {{ required "the demeter appsuite is required" .Release.DemeterAppSuite }}
+app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*

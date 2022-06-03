@@ -202,8 +202,6 @@ func runInstallWithSignalWait(args []string, client *action.Install, valueOpts *
 
 	installcmd := helm.CMDInstall{
 		Namespace:    settings.Namespace(),
-		AppSuiteName: settings.DemeterAppSuite,
-		ClusterName:  settings.DemeterCluster,
 		ReleaseName:  name,
 		ChartPath:    chart,
 		Values:       vals,

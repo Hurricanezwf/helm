@@ -66,10 +66,8 @@ func Templates(linter *support.Linter, values map[string]interface{}, namespace 
 	}
 
 	options := chartutil.ReleaseOptions{
-		Name:            "test-release",
-		Namespace:       namespace,
-		DemeterAppSuite: "test-appsuite",
-		DemeterCluster:  "test-cluster",
+		Name:      "test-release",
+		Namespace: namespace,
 	}
 
 	// lint ignores import-values

@@ -142,8 +142,6 @@ func newUpgradeCmd(cfg *action.Configuration, out io.Writer) *cobra.Command {
 
 func runUpgradeWithSignalWait(args []string, client *action.Upgrade, valueOpts *values.Options, createNamespace bool, out io.Writer) (*release.Release, error) {
 	client.Namespace = settings.Namespace()
-	client.DemeterAppSuite = settings.DemeterAppSuite
-	client.DemeterCluster = settings.DemeterCluster
 
 	if client.Install {
 		if rel, continueToUpgrade, err := runInstallWhenUpgrade(args, client, valueOpts, createNamespace, out); !continueToUpgrade {
@@ -174,8 +172,6 @@ func runUpgradeWithSignalWait(args []string, client *action.Upgrade, valueOpts *
 
 	upgradecmd := helm.CMDUpgrade{
 		Namespace:    client.Namespace,
-		AppSuiteName: client.DemeterAppSuite,
-		ClusterName:  client.DemeterCluster,
 		ReleaseName:  args[0],
 		ChartPath:    args[1],
 		Values:       vals,
@@ -209,8 +205,6 @@ func runInstallWhenUpgrade(args []string, client *action.Upgrade, valueOpts *val
 		fmt.Fprintf(out, "Release %q does not exist. Installing it now.\n", args[0])
 	}
 	instClient := action.NewInstall(cfg)
-	instClient.DemeterAppSuite = client.DemeterAppSuite
-	instClient.DemeterCluster = client.DemeterCluster
 	instClient.CreateNamespace = createNamespace
 	instClient.ChartPathOptions = client.ChartPathOptions
 	instClient.DryRun = client.DryRun

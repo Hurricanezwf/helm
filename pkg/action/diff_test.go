@@ -97,7 +97,7 @@ func TestDiffUpdateResult(t *testing.T) {
     "metadata": {
         "name": "update_deploy",
         "labels": {
-            "managedby": "demeter",
+            "managedby": "Helm",
             "appsuite": "xxx"
         }
     }
@@ -109,7 +109,7 @@ func TestDiffUpdateResult(t *testing.T) {
     "metadata": {
         "name": "update_deploy",
         "labels": {
-            "managedby": "demeter",
+            "managedby": "Helm",
             "appsuite": "zzz"
         }
     }

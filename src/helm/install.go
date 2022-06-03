@@ -36,8 +36,6 @@ import (
 type CMDInstall struct {
 	// these fields are all required
 	Namespace    string
-	AppSuiteName string
-	ClusterName  string
 	ReleaseName  string
 	ChartPath    string
 	Values       chartutil.Values
@@ -52,21 +50,15 @@ func (c *CMDInstall) validateAndSetDefault() error {
 	if c.Namespace == "" {
 		return errors.New("namespace cannot be empty")
 	}
-	if c.AppSuiteName == "" {
-		return errors.New("appsuite name cannot be empty")
-	}
-	if c.ClusterName == "" {
-		return errors.New("cluster name cannot be empty")
-	}
 	if c.ReleaseName == "" {
 		return errors.New("release name cannot be empty")
 	}
 	if c.ChartPath == "" {
 		return errors.New("chart path cannot be empty")
 	}
-	if c.Values == nil {
-		// it's ok
-	}
+	//if c.Values == nil {
+	//	// it's ok
+	//}
 	if c.Client == nil {
 		return errors.New("client cannot be nil")
 	}
@@ -92,17 +84,15 @@ func (c *CMDInstall) RunInstall(ctx context.Context) (*release.Release, error) {
 
 	// 转成 local 变量少改逻辑
 	var (
-		namespace    = c.Namespace
-		appsuiteName = c.AppSuiteName
-		clusterName  = c.ClusterName
-		releaseName  = c.ReleaseName
-		chartPath    = c.ChartPath
-		values       = c.Values
-		client       = c.Client
-		settings     = c.Settings
-		out          = c.Out
-		debug        = c.DebugLogFunc
-		warning      = c.WarnLogFunc
+		namespace   = c.Namespace
+		releaseName = c.ReleaseName
+		chartPath   = c.ChartPath
+		values      = c.Values
+		client      = c.Client
+		settings    = c.Settings
+		out         = c.Out
+		debug       = c.DebugLogFunc
+		warning     = c.WarnLogFunc
 	)
 
 	c.DebugLogFunc("Original chart version: %q", client.Version)
@@ -112,8 +102,6 @@ func (c *CMDInstall) RunInstall(ctx context.Context) (*release.Release, error) {
 	}
 
 	client.Namespace = namespace
-	client.DemeterAppSuite = appsuiteName
-	client.DemeterCluster = clusterName
 	client.ReleaseName = releaseName
 
 	cp, err := client.ChartPathOptions.LocateChart(chartPath, settings)

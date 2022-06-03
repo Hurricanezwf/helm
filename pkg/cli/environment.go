@@ -68,10 +68,6 @@ type EnvSettings struct {
 	PluginsDirectory string
 	// MaxHistory is the max release history maintained.
 	MaxHistory int
-	// DemeterAppSuite is the appsuite name in the demeter.
-	DemeterAppSuite string
-	// DemeterCluster is the cluster name in the demeter.
-	DemeterCluster string
 }
 
 func New() *EnvSettings {
@@ -88,8 +84,6 @@ func New() *EnvSettings {
 		RegistryConfig:   envOr("HELM_REGISTRY_CONFIG", helmpath.ConfigPath("registry/config.json")),
 		RepositoryConfig: envOr("HELM_REPOSITORY_CONFIG", helmpath.ConfigPath("repositories.yaml")),
 		RepositoryCache:  envOr("HELM_REPOSITORY_CACHE", helmpath.CachePath("repository")),
-		DemeterAppSuite:  os.Getenv("DEMETER_APPSUITE"),
-		DemeterCluster:   os.Getenv("DEMETER_CLUSTER"),
 	}
 	env.Debug, _ = strconv.ParseBool(os.Getenv("HELM_DEBUG"))
 
@@ -121,8 +115,6 @@ func (s *EnvSettings) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.RegistryConfig, "registry-config", s.RegistryConfig, "path to the registry config file")
 	fs.StringVar(&s.RepositoryConfig, "repository-config", s.RepositoryConfig, "path to the file containing repository names and URLs")
 	fs.StringVar(&s.RepositoryCache, "repository-cache", s.RepositoryCache, "path to the file containing cached repository indexes")
-	fs.StringVar(&s.DemeterAppSuite, "appsuite", "", "appsuite name in the demeter")
-	fs.StringVar(&s.DemeterCluster, "cluster", "", "cluster name in the demeter")
 }
 
 func envOr(name, def string) string {
@@ -173,8 +165,6 @@ func (s *EnvSettings) EnvVars() map[string]string {
 		"HELM_KUBEASGROUPS":  strings.Join(s.KubeAsGroups, ","),
 		"HELM_KUBEAPISERVER": s.KubeAPIServer,
 		"HELM_KUBECAFILE":    s.KubeCaFile,
-		"DEMETER_APPSUITE":   s.DemeterAppSuite,
-		"DEMETER_CLUSTER":    s.DemeterCluster,
 	}
 	if s.KubeConfig != "" {
 		envvars["KUBECONFIG"] = s.KubeConfig
