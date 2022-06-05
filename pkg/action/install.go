@@ -349,12 +349,13 @@ func (i *Install) RunWithContext(ctx context.Context, chrt *chart.Chart, vals ma
 		// not working.
 		return rel, err
 	}
-	rChan := make(chan resultMessage)
+	// ZWF: refactoring here to fix channel leaks
+	rChan := NewResultMessageChan(2)
 	doneChan := make(chan struct{})
 	defer close(doneChan)
 	go i.performInstall(rChan, rel, toBeAdopted, resources)
 	go i.handleContext(ctx, rChan, doneChan, rel)
-	result := <-rChan
+	result := <-rChan.Channel()
 	//start preformInstall go routine
 	return result.r, result.e
 }
@@ -367,7 +368,10 @@ func (i *Install) diffInstall(result *UpdateResult) (string, error) {
 	return string(diffmsg), nil
 }
 
-func (i *Install) performInstall(c chan<- resultMessage, rel *release.Release, toBeAdopted kube.ResourceList, resources kube.ResourceList) {
+func (i *Install) performInstall(resultCh *ResultMessageChan, rel *release.Release, toBeAdopted kube.ResourceList, resources kube.ResourceList) {
+	defer resultCh.Close()
+
+	var c chan<- resultMessage = resultCh.Channel()
 
 	// pre-install hooks
 	if !i.DisableHooks {
@@ -432,7 +436,11 @@ func (i *Install) performInstall(c chan<- resultMessage, rel *release.Release, t
 
 	i.reportToRun(c, rel, nil)
 }
-func (i *Install) handleContext(ctx context.Context, c chan<- resultMessage, done chan struct{}, rel *release.Release) {
+func (i *Install) handleContext(ctx context.Context, resultCh *ResultMessageChan, done chan struct{}, rel *release.Release) {
+	defer resultCh.Close()
+
+	var c chan<- resultMessage = resultCh.Channel()
+
 	select {
 	case <-ctx.Done():
 		err := ctx.Err()
