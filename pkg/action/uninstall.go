@@ -152,7 +152,7 @@ func (u *Uninstall) Run(name string) (*release.UninstallReleaseResponse, error) 
 			errs = append(errs, errors.Wrap(err, "uninstall: Failed to purge the release"))
 		}
 
-		// ZWF: move these line to the upper.
+		// ZWF: move these lines to the upper
 		// Return the errors that occurred while deleting the release, if any
 		//if len(errs) > 0 {
 		//	return res, errors.Errorf("uninstallation completed with %d error(s): %s", len(errs), joinErrors(errs))
