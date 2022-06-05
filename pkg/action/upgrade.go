@@ -333,18 +333,15 @@ func (u *Upgrade) performUpgrade(ctx context.Context, originalRelease, upgradedR
 	if err := u.cfg.Releases.Create(upgradedRelease); err != nil {
 		return nil, err
 	}
-	rChan := make(chan resultMessage)
-	ctxChan := make(chan resultMessage)
+	// ZWF: refactoring the code to fix channel leak.
+	rChan := NewResultMessageChan(2)
 	doneChan := make(chan interface{})
 	defer close(doneChan)
 	go u.releasingUpgrade(rChan, upgradedRelease, current, target, originalRelease)
-	go u.handleContext(ctx, doneChan, ctxChan, upgradedRelease)
-	select {
-	case result := <-rChan:
-		return result.r, result.e
-	case result := <-ctxChan:
-		return result.r, result.e
-	}
+	go u.handleContext(ctx, doneChan, rChan, upgradedRelease)
+
+	result := <-rChan.Channel()
+	return result.r, result.e
 }
 
 func (u *Upgrade) diffUpgrade(current, target kube.ResourceList) (string, error) {
@@ -394,7 +391,11 @@ func (u *Upgrade) reportToPerformUpgrade(c chan<- resultMessage, rel *release.Re
 }
 
 // Setup listener for SIGINT and SIGTERM
-func (u *Upgrade) handleContext(ctx context.Context, done chan interface{}, c chan<- resultMessage, upgradedRelease *release.Release) {
+func (u *Upgrade) handleContext(ctx context.Context, done chan interface{}, resultCh *ResultMessageChan, upgradedRelease *release.Release) {
+	defer resultCh.Close()
+
+	var c chan<- resultMessage = resultCh.Channel()
+
 	select {
 	case <-ctx.Done():
 		err := ctx.Err()
@@ -405,7 +406,11 @@ func (u *Upgrade) handleContext(ctx context.Context, done chan interface{}, c ch
 		return
 	}
 }
-func (u *Upgrade) releasingUpgrade(c chan<- resultMessage, upgradedRelease *release.Release, current kube.ResourceList, target kube.ResourceList, originalRelease *release.Release) {
+func (u *Upgrade) releasingUpgrade(resultCh *ResultMessageChan, upgradedRelease *release.Release, current kube.ResourceList, target kube.ResourceList, originalRelease *release.Release) {
+	defer resultCh.Close()
+
+	var c chan<- resultMessage = resultCh.Channel()
+
 	// pre-upgrade hooks
 
 	if !u.DisableHooks {
