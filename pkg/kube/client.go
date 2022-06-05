@@ -365,12 +365,12 @@ func perform(infos ResourceList, fn func(*resource.Info) error) error {
 		return ErrNoObjectsVisited
 	}
 
-	errs := make(chan error)
+	errs := make(chan error, 5)
 	go batchPerform(infos, fn, errs)
 
 	for range infos {
-		err := <-errs
-		if err != nil {
+		// Note: it's safe to quit after the first error because we use non-block write.
+		if err := <-errs; err != nil {
 			return err
 		}
 	}
@@ -398,6 +398,9 @@ func getManagedFieldsManager() string {
 }
 
 func batchPerform(infos ResourceList, fn func(*resource.Info) error, errs chan<- error) {
+	// ZWF: fix this channel leak
+	defer close(errs)
+
 	var kind string
 	var wg sync.WaitGroup
 	for _, info := range infos {
@@ -408,10 +411,16 @@ func batchPerform(infos ResourceList, fn func(*resource.Info) error, errs chan<-
 		}
 		wg.Add(1)
 		go func(i *resource.Info) {
-			errs <- fn(i)
-			wg.Done()
+			defer wg.Done()
+			// ZWF: use non-block write to fix goroutine leak.
+			select {
+			case errs <- fn(i):
+			default:
+			}
 		}(info)
 	}
+	// ZWF: fix this to wait for all goroutines to finish
+	wg.Wait()
 }
 
 func createResource(info *resource.Info) error {
