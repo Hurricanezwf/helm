@@ -141,7 +141,7 @@ func (u *Uninstall) Run(name string) (*release.UninstallReleaseResponse, error) 
 	}
 
 	if !u.KeepHistory {
-		// ZWF: forbidden to delete the release when any error occured !
+		// ZWF: forbiden purging the release if any error occured.
 		if len(errs) > 0 {
 			return res, errors.Errorf("uninstallation completed with %d error(s): %s", len(errs), joinErrors(errs))
 		}
