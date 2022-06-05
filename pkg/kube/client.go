@@ -192,6 +192,9 @@ func (c *Client) newBuilder() *resource.Builder {
 
 // Build validates for Kubernetes objects and returns unstructured infos.
 func (c *Client) Build(reader io.Reader, validate bool) (ResourceList, error) {
+	if c.namespace() == "" {
+		return nil, errors.New("must specify a namespace")
+	}
 	schema, err := c.Factory.Validator(validate)
 	if err != nil {
 		return nil, err
