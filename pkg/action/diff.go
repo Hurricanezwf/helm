@@ -50,7 +50,7 @@ func (r *UpdateResult) Marshal() (string, error) {
 	buf := bytes.NewBuffer(nil)
 
 	for _, created := range r.Created {
-		if created != nil {
+		if created == nil {
 			continue
 		}
 		buf.Reset()
@@ -67,7 +67,7 @@ func (r *UpdateResult) Marshal() (string, error) {
 		updates.Updated = append(updates.Updated, m)
 	}
 	for _, deleted := range r.Deleted {
-		if deleted != nil {
+		if deleted == nil {
 			continue
 		}
 		buf.Reset()
