@@ -19,6 +19,7 @@ package action
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -315,17 +316,18 @@ func (u *Upgrade) performUpgrade(ctx context.Context, originalRelease, upgradedR
 
 	if u.DryRun {
 		u.cfg.Log("dry run for %s", upgradedRelease.Name)
-		// Note: Comment by zwf because I want to show the diff message.
-		//if len(u.Description) > 0 {
-		//	upgradedRelease.Info.Description = u.Description
-		//} else {
-		//	upgradedRelease.Info.Description = "Dry run complete"
-		//}
-		diffmsg, err := u.diffUpgrade(current, target) // 由于上面更新了 current 的内容，所以需要重新计算 diff 依据
+		if len(u.Description) > 0 {
+			upgradedRelease.Info.Description = u.Description
+		} else {
+			upgradedRelease.Info.Description = "Dry run complete"
+		}
+		// complete the diff message
+		diffmsg, updatesRaw, err := u.diffUpgrade(current, target) // 由于上面更新了 current 的内容，所以需要重新计算 diff 依据
 		if err != nil {
 			return nil, err
 		}
-		upgradedRelease.Info.Description = "\n" + diffmsg
+		upgradedRelease.Info.Diff = "\n" + diffmsg
+		upgradedRelease.Info.UpdatesRaw = updatesRaw
 		return upgradedRelease, nil
 	}
 
@@ -344,13 +346,13 @@ func (u *Upgrade) performUpgrade(ctx context.Context, originalRelease, upgradedR
 	return result.r, result.e
 }
 
-func (u *Upgrade) diffUpgrade(current, target kube.ResourceList) (string, error) {
+func (u *Upgrade) diffUpgrade(current, target kube.ResourceList) (diff, rawManifest string, err error) {
 	result := &UpdateResult{
 		Created: target.Difference(current),
 		Deleted: current.Difference(target),
 	}
 
-	err := current.Intersect(target).Visit(func(currentInfo *resource.Info, err error) error {
+	err = current.Intersect(target).Visit(func(currentInfo *resource.Info, err error) error {
 		if err != nil {
 			return err
 		}
@@ -368,14 +370,20 @@ func (u *Upgrade) diffUpgrade(current, target kube.ResourceList) (string, error)
 		return nil
 	})
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	diffmsg, err := DiffUpdateResult(result, u.Force)
 	if err != nil {
-		return "", fmt.Errorf("failed to diff upgrade, %w", err)
+		return "", "", fmt.Errorf("failed to diff upgrade, %w", err)
 	}
-	return string(diffmsg), nil
+
+	raw, err := json.Marshal(result)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to marshal update result, %w", err)
+	}
+
+	return string(diffmsg), string(raw), nil
 }
 
 // Function used to lock the Mutex, this is important for the case when the atomic flag is set.

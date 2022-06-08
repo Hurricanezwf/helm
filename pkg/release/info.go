@@ -29,6 +29,10 @@ type Info struct {
 	Deleted time.Time `json:"deleted"`
 	// Description is human-friendly "log entry" about this release.
 	Description string `json:"description,omitempty"`
+	// Diff is the diff of this release.
+	Diff string `json:"diff,omitempty"`
+	// UpdatesRaw is the raw update result of this release.
+	UpdatesRaw string `json:"updatesRaw,omitempty"`
 	// Status is the current state of the release
 	Status Status `json:"status,omitempty"`
 	// Contains the rendered templates/NOTES.txt if available

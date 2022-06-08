@@ -19,6 +19,7 @@ package action
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/url"
@@ -295,15 +296,16 @@ func (i *Install) RunWithContext(ctx context.Context, chrt *chart.Chart, vals ma
 
 	// Bail out here if it is a dry run
 	if i.DryRun {
-		// Note: Comment by zwf because I want to print the diff message.
-		// rel.Info.Description = "Dry run complete"
-		diffmsg, err := i.diffInstall(&UpdateResult{
+		rel.Info.Description = "Dry run complete"
+		// complete the diff
+		diffmsg, updatesRaw, err := i.diffInstall(&UpdateResult{
 			Created: resources,
 		})
 		if err != nil {
 			return nil, err
 		}
-		rel.Info.Description = "\n" + diffmsg
+		rel.Info.Diff = "\n" + diffmsg
+		rel.Info.UpdatesRaw = updatesRaw
 		return rel, nil
 	}
 
@@ -360,12 +362,16 @@ func (i *Install) RunWithContext(ctx context.Context, chrt *chart.Chart, vals ma
 	return result.r, result.e
 }
 
-func (i *Install) diffInstall(result *UpdateResult) (string, error) {
+func (i *Install) diffInstall(result *UpdateResult) (diff, updates string, err error) {
 	diffmsg, err := DiffUpdateResult(result, false)
 	if err != nil {
-		return "", fmt.Errorf("failed to diff install, %w", err)
+		return "", "", fmt.Errorf("failed to diff install, %w", err)
 	}
-	return string(diffmsg), nil
+	updatesRaw, err := json.Marshal(result)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to json marshal update result, %w", err)
+	}
+	return string(diffmsg), string(updatesRaw), nil
 }
 
 func (i *Install) performInstall(resultCh *ResultMessageChan, rel *release.Release, toBeAdopted kube.ResourceList, resources kube.ResourceList) {

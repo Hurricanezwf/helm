@@ -33,15 +33,20 @@ import (
 // UpdateResult records the manifests that are created, updated, and deleted.
 // It is used to generate the diff output.
 type UpdateResult struct {
-	Created []*resource.Info
-	Updated []UpdatedInfo
-	Deleted []*resource.Info
+	CreatedRawJSON []string         `json:"created"`
+	Created        []*resource.Info `json:"-"`
+	UpdatedRawJSON []UpdatedInfo    `json:"updated"`
+	Updated        []UpdatedInfo    `json:"-"`
+	DeletedRawJSON []string         `json:"deleted"`
+	Deleted        []*resource.Info `json:"-"`
 }
 
 // UpdatedInfo is to describe the updated resource.
 type UpdatedInfo struct {
-	From *resource.Info
-	To   *resource.Info
+	FromRawJSON string         `json:"from"`
+	From        *resource.Info `json:"-"`
+	ToRawJSON   string         `json:"to"`
+	To          *resource.Info `json:"-"`
 }
 
 // DiffUpdateResult returns a diff of the update result with `helm diff`.
