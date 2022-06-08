@@ -18,6 +18,7 @@ package action
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -33,20 +34,86 @@ import (
 // UpdateResult records the manifests that are created, updated, and deleted.
 // It is used to generate the diff output.
 type UpdateResult struct {
-	CreatedRawJSON []string         `json:"created"`
-	Created        []*resource.Info `json:"-"`
-	UpdatedRawJSON []UpdatedInfo    `json:"updated"`
-	Updated        []UpdatedInfo    `json:"-"`
-	DeletedRawJSON []string         `json:"deleted"`
-	Deleted        []*resource.Info `json:"-"`
+	Created []*resource.Info
+	Updated []UpdatedInfo
+	Deleted []*resource.Info
+}
+
+type UpdateManifest struct {
+	Created []string          `json:"created"`
+	Updated []UpdatedManifest `json:"updated"`
+	Deleted []string          `json:"deleted"`
+}
+
+func (r *UpdateResult) Marshal() (string, error) {
+	updates := UpdateManifest{}
+	buf := bytes.NewBuffer(nil)
+
+	for _, created := range r.Created {
+		if created != nil {
+			continue
+		}
+		buf.Reset()
+		if err := unstructured.UnstructuredJSONScheme.Encode(created.Object, buf); err != nil {
+			return "", fmt.Errorf("failed to encode `%s/%s`, %w", created.Namespace, created.Name, err)
+		}
+		updates.Created = append(updates.Created, buf.String())
+	}
+	for _, updated := range r.Updated {
+		m, err := updated.ToManifest()
+		if err != nil {
+			return "", err
+		}
+		updates.Updated = append(updates.Updated, m)
+	}
+	for _, deleted := range r.Deleted {
+		if deleted != nil {
+			continue
+		}
+		buf.Reset()
+		if err := unstructured.UnstructuredJSONScheme.Encode(deleted.Object, buf); err != nil {
+			return "", fmt.Errorf("failed to encode `%s/%s`, %w", deleted.Namespace, deleted.Name, err)
+		}
+		updates.Deleted = append(updates.Deleted, buf.String())
+	}
+
+	b, err := json.Marshal(updates)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }
 
 // UpdatedInfo is to describe the updated resource.
 type UpdatedInfo struct {
-	FromRawJSON string         `json:"from"`
-	From        *resource.Info `json:"-"`
-	ToRawJSON   string         `json:"to"`
-	To          *resource.Info `json:"-"`
+	From *resource.Info
+	To   *resource.Info
+}
+
+type UpdatedManifest struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
+func (u *UpdatedInfo) ToManifest() (UpdatedManifest, error) {
+	update := UpdatedManifest{}
+	buf := bytes.NewBuffer(nil)
+
+	if u.From != nil {
+		buf.Reset()
+		if err := unstructured.UnstructuredJSONScheme.Encode(u.From.Object, buf); err != nil {
+			return update, fmt.Errorf("failed to encode `%s/%s`, %w", u.From.Namespace, u.From.Name, err)
+		}
+		update.From = buf.String()
+	}
+	if u.To != nil {
+		buf.Reset()
+		if err := unstructured.UnstructuredJSONScheme.Encode(u.To.Object, buf); err != nil {
+			return update, fmt.Errorf("failed to encode `%s/%s`, %w", u.To.Namespace, u.To.Name, err)
+		}
+		update.To = buf.String()
+	}
+	return update, nil
 }
 
 // DiffUpdateResult returns a diff of the update result with `helm diff`.

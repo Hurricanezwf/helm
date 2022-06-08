@@ -19,7 +19,6 @@ package action
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/url"
@@ -367,7 +366,7 @@ func (i *Install) diffInstall(result *UpdateResult) (diff, updates string, err e
 	if err != nil {
 		return "", "", fmt.Errorf("failed to diff install, %w", err)
 	}
-	updatesRaw, err := json.Marshal(result)
+	updatesRaw, err := result.Marshal()
 	if err != nil {
 		return "", "", fmt.Errorf("failed to json marshal update result, %w", err)
 	}

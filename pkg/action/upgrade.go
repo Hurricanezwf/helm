@@ -19,7 +19,6 @@ package action
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -378,7 +377,7 @@ func (u *Upgrade) diffUpgrade(current, target kube.ResourceList) (diff, rawManif
 		return "", "", fmt.Errorf("failed to diff upgrade, %w", err)
 	}
 
-	raw, err := json.Marshal(result)
+	raw, err := result.Marshal()
 	if err != nil {
 		return "", "", fmt.Errorf("failed to marshal update result, %w", err)
 	}
