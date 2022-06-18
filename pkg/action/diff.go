@@ -203,7 +203,7 @@ func ResourceInfoToMappingResult(rc *resource.Info) (*manifest.MappingResult, er
 	}
 
 	// Notice: I remove the `object.metadata.managedFields` field here because it's too dirty to review the diff content !!!
-	b = removeDirtyDiffFields(b)
+	b = RemoveDirtyDiffFields(b)
 	if b, err = yaml.JSONToYAML(b); err != nil {
 		return nil, fmt.Errorf("failed to parse json doc to yaml, %w", err)
 	}
@@ -215,7 +215,7 @@ func ResourceInfoToMappingResult(rc *resource.Info) (*manifest.MappingResult, er
 	}, nil
 }
 
-func removeDirtyDiffFields(jsonBytes []byte) []byte {
+func RemoveDirtyDiffFields(jsonBytes []byte) []byte {
 	var err error
 	var cleanContent = jsonBytes
 
