@@ -219,11 +219,17 @@ func RemoveDirtyDiffFields(jsonBytes []byte) []byte {
 	var err error
 	var cleanContent = jsonBytes
 
-	if cleanContent, err = sjson.DeleteBytes(cleanContent, "metadata.managedFields"); err != nil {
-		return jsonBytes
-	}
-	if cleanContent, err = sjson.DeleteBytes(cleanContent, "status"); err != nil {
-		return jsonBytes
+	for _, path := range []string{
+		"metadata.managedFields",
+		"metadata.creationTimestamp",
+		"metadata.resourceVersion",
+		"metadata.selfLink",
+		"metadata.uid",
+		"status",
+	} {
+		if cleanContent, err = sjson.DeleteBytes(cleanContent, path); err != nil {
+			return jsonBytes
+		}
 	}
 	return cleanContent
 }
