@@ -225,6 +225,7 @@ func RemoveDirtyDiffFields(jsonBytes []byte) []byte {
 		"metadata.resourceVersion",
 		"metadata.selfLink",
 		"metadata.uid",
+		"spec.finalizers",
 		"status",
 	} {
 		if cleanContent, err = sjson.DeleteBytes(cleanContent, path); err != nil {

@@ -17,6 +17,7 @@ limitations under the License.
 package action
 
 import (
+	"fmt"
 	"path"
 	"regexp"
 
@@ -166,6 +167,7 @@ func (l *List) Run() ([]*release.Release, error) {
 
 		return true
 	})
+	fmt.Printf("xxx: release result count: %d\n", len(results))
 
 	if err != nil {
 		return nil, err

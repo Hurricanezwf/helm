@@ -18,6 +18,7 @@ package driver // import "helm.sh/helm/v3/pkg/storage/driver"
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -104,6 +105,7 @@ func (secrets *Secrets) List(filter func(*rspb.Release) bool) ([]*rspb.Release, 
 			results = append(results, rls)
 		}
 	}
+	fmt.Printf("return %d releases\n", len(results))
 	return results, nil
 }
 
