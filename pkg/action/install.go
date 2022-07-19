@@ -32,8 +32,11 @@ import (
 
 	"github.com/Masterminds/sprig/v3"
 	"github.com/pkg/errors"
+	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/cli-runtime/pkg/resource"
+	"sigs.k8s.io/yaml"
 
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chartutil"
@@ -309,30 +312,30 @@ func (i *Install) RunWithContext(ctx context.Context, chrt *chart.Chart, vals ma
 	}
 
 	if i.CreateNamespace {
-		return nil, errors.New("we do not support this feature. please contact the admin")
-		//ns := &v1.Namespace{
-		//	TypeMeta: metav1.TypeMeta{
-		//		APIVersion: "v1",
-		//		Kind:       "Namespace",
-		//	},
-		//	ObjectMeta: metav1.ObjectMeta{
-		//		Name: i.Namespace,
-		//		Labels: map[string]string{
-		//			"name": i.Namespace,
-		//		},
-		//	},
-		//}
-		//buf, err := yaml.Marshal(ns)
-		//if err != nil {
-		//	return nil, err
-		//}
-		//resourceList, err := i.cfg.KubeClient.Build(bytes.NewBuffer(buf), true)
-		//if err != nil {
-		//	return nil, err
-		//}
-		//if _, err := i.cfg.KubeClient.Create(resourceList); err != nil && !apierrors.IsAlreadyExists(err) {
-		//	return nil, err
-		//}
+		//return nil, errors.New("we do not support this feature. please contact the admin")
+		ns := &v1.Namespace{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "v1",
+				Kind:       "Namespace",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name: i.Namespace,
+				Labels: map[string]string{
+					"name": i.Namespace,
+				},
+			},
+		}
+		buf, err := yaml.Marshal(ns)
+		if err != nil {
+			return nil, err
+		}
+		resourceList, err := i.cfg.KubeClient.Build(bytes.NewBuffer(buf), true)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := i.cfg.KubeClient.Create(resourceList); err != nil && !apierrors.IsAlreadyExists(err) {
+			return nil, err
+		}
 	}
 
 	// If Replace is true, we need to supercede the last release.
