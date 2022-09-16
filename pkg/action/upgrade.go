@@ -24,8 +24,14 @@ import (
 	"sync"
 	"time"
 
+	"git.agoralab.co/ipt/devkits.git/encoding"
+
 	"github.com/pkg/errors"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/cli-runtime/pkg/resource"
 
 	"helm.sh/helm/v3/pkg/chart"
@@ -144,7 +150,7 @@ func (u *Upgrade) RunWithContext(ctx context.Context, name string, chart *chart.
 		return nil, errors.Errorf("release name is invalid: %s", name)
 	}
 	u.cfg.Log("preparing upgrade for %s", name)
-	currentRelease, upgradedRelease, err := u.prepareUpgrade(name, chart, vals)
+	currentRelease, upgradedRelease, err := u.prepareUpgrade(ctx, name, chart, vals)
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +174,7 @@ func (u *Upgrade) RunWithContext(ctx context.Context, name string, chart *chart.
 }
 
 // prepareUpgrade builds an upgraded release for an upgrade operation.
-func (u *Upgrade) prepareUpgrade(name string, chart *chart.Chart, vals map[string]interface{}) (*release.Release, *release.Release, error) {
+func (u *Upgrade) prepareUpgrade(ctx context.Context, name string, chart *chart.Chart, vals map[string]interface{}) (*release.Release, *release.Release, error) {
 	if chart == nil {
 		return nil, nil, errMissingChart
 	}
@@ -240,6 +246,16 @@ func (u *Upgrade) prepareUpgrade(name string, chart *chart.Chart, vals map[strin
 		return nil, nil, err
 	}
 
+	// ZWF: 渲染完成后在这里将模板里的容量替换为当前容量;
+	newManifestDoc, err := u.resetCapacatyForWorkloads(ctx, manifestDoc.String())
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to reset capacity for workloads, %w", err)
+	}
+
+	if err = validateManifest(u.cfg.KubeClient, manifestDoc.Bytes(), !u.DisableOpenAPIValidation); err != nil {
+		return nil, nil, err
+	}
+
 	// Store an upgraded release.
 	upgradedRelease := &release.Release{
 		Name:      name,
@@ -251,16 +267,13 @@ func (u *Upgrade) prepareUpgrade(name string, chart *chart.Chart, vals map[strin
 			LastDeployed:  Timestamper(),
 			Status:        release.StatusPendingUpgrade,
 			Description:   "Preparing upgrade", // This should be overwritten later.
+			Notes:         notesTxt,
 		},
 		Version:  revision,
-		Manifest: manifestDoc.String(),
+		Manifest: newManifestDoc,
 		Hooks:    hooks,
 	}
 
-	if len(notesTxt) > 0 {
-		upgradedRelease.Info.Notes = notesTxt
-	}
-	err = validateManifest(u.cfg.KubeClient, manifestDoc.Bytes(), !u.DisableOpenAPIValidation)
 	return currentRelease, upgradedRelease, err
 }
 
@@ -578,6 +591,199 @@ func (u *Upgrade) reuseValues(chart *chart.Chart, current *release.Release, newV
 		newVals = current.Config
 	}
 	return newVals, nil
+}
+
+// resetCapacatyForWorkloads 重置 manifests 内的 workload 容量为当前生产值;
+func (u *Upgrade) resetCapacatyForWorkloads(ctx context.Context, yamlManifestDoc string) (newYAMLManifestDoc string, err error) {
+	jsonChunks, err := encoding.YAMLStreamToJSONChunk(yamlManifestDoc)
+	if err != nil {
+		return "", fmt.Errorf("failed to convert manifest yaml stream to json chunks, %s", err.Error())
+	}
+	for idx, jsonDoc := range jsonChunks {
+		j := gjson.Parse(jsonDoc)
+		kind := strings.ToLower(j.Get("kind").String())
+		switch kind {
+		case "uapdeployment":
+			jsonDoc, err = u.resetCapacatyForUAPDeployment(ctx, j.Get("metadata.namespace").String(), j.Get("metadata.name").String(), jsonDoc)
+		case "deployment":
+			jsonDoc, err = u.resetCapacatyForDeployment(ctx, j.Get("metadata.namespace").String(), j.Get("metadata.name").String(), jsonDoc)
+		case "statefulset":
+			jsonDoc, err = u.resetCapacatyForStatefulSet(ctx, j.Get("metadata.namespace").String(), j.Get("metadata.name").String(), jsonDoc)
+		case "horizontalpodautoscaler":
+			jsonDoc, err = u.resetCapacatyForHorizontalPodAutoscaler(ctx, j.Get("metadata.namespace").String(), j.Get("metadata.name").String(), jsonDoc)
+		default:
+			// do nothing
+		}
+		if err != nil {
+			return "", fmt.Errorf("failed to reset capacity for %s `%s`, %w", kind, j.Get("metadata.name").String(), err)
+		}
+		jsonChunks[idx] = jsonDoc
+	}
+	return encoding.JSONChunkToYAMLStream(jsonChunks)
+}
+
+func (u *Upgrade) resetCapacatyForUAPDeployment(ctx context.Context, namespace, name, jsonDoc string) (string, error) {
+	if namespace == "" {
+		return "", errors.New("namespace cannot be empty")
+	}
+	if name == "" {
+		return "", errors.New("name cannot be empty")
+	}
+
+	kubecli, err := u.cfg.DynamicClient()
+	if err != nil {
+		return "", fmt.Errorf("failed to new kubernetes dynamic clientset, %w", err)
+	}
+
+	unstructuredObj, err := kubecli.Resource(schema.GroupVersionResource{
+		Group:    "scaler.uap.agora.io",
+		Version:  "v1",
+		Resource: "uapdeployments",
+	}).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			// it's ok when the deployment doesn't exist.
+			return jsonDoc, nil
+		}
+		return "", err
+	}
+	if unstructuredObj == nil {
+		// it's ok when the uapdeployment doesn't exist. This condition is for client-go campatibility.
+		return jsonDoc, nil
+	}
+	uapdeploymentJSONBytes, err := unstructuredObj.MarshalJSON()
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal uapdeployment to json bytes, %w", err)
+	}
+	j := gjson.ParseBytes(uapdeploymentJSONBytes)
+
+	// reset capacity
+	idlePercentResult := j.Get("spec.scalingPolicy.idlePercent")
+	if idlePercentResult.Type == gjson.Null {
+		return "", fmt.Errorf("uapdeployment `%s` in namespace `%s` contains no spec.scalingPolicy.idlePercent", name, namespace)
+	}
+	if jsonDoc, err = sjson.Set(jsonDoc, "spec.scalingPolicy.idlePercent", idlePercentResult.Int()); err != nil {
+		return "", fmt.Errorf("failed to reset spec.scalingPolicy.idlePercent, %w", err)
+	}
+
+	maxUnavailableResult := j.Get("spec.scalingPolicy.maxUnavailable")
+	if maxUnavailableResult.Type == gjson.Null {
+		return "", fmt.Errorf("uapdeployment `%s` in namespace `%s` contains no spec.scalingPolicy.maxUnavailable", name, namespace)
+	}
+	if jsonDoc, err = sjson.Set(jsonDoc, "spec.scalingPolicy.maxUnavailable", maxUnavailableResult.Int()); err != nil {
+		return "", fmt.Errorf("failed to reset spec.scalingPolicy.maxUnavailable, %w", err)
+	}
+
+	maxWorkerNumResult := j.Get("spec.scalingPolicy.maxWorkerNum")
+	if maxWorkerNumResult.Type == gjson.Null {
+		return "", fmt.Errorf("uapdeployment `%s` in namespace `%s` contains no spec.scalingPolicy.maxWorkerNum", name, namespace)
+	}
+	if jsonDoc, err = sjson.Set(jsonDoc, "spec.scalingPolicy.maxWorkerNum", maxWorkerNumResult.Int()); err != nil {
+		return "", fmt.Errorf("failed to reset spec.scalingPolicy.maxWorkerNum, %w", err)
+	}
+
+	minWorkerNumResult := j.Get("spec.scalingPolicy.minWorkerNum")
+	if minWorkerNumResult.Type == gjson.Null {
+		return "", fmt.Errorf("uapdeployment `%s` in namespace `%s` contains no spec.scalingPolicy.minWorkerNum", name, namespace)
+	}
+	if jsonDoc, err = sjson.Set(jsonDoc, "spec.scalingPolicy.minWorkerNum", minWorkerNumResult.Int()); err != nil {
+		return "", fmt.Errorf("failed to reset spec.scalingPolicy.minWorkerNum, %w", err)
+	}
+
+	return jsonDoc, nil
+}
+
+func (u *Upgrade) resetCapacatyForDeployment(ctx context.Context, namespace, name, jsonDoc string) (string, error) {
+	if namespace == "" {
+		return "", errors.New("namespace cannot be empty")
+	}
+	if name == "" {
+		return "", errors.New("name cannot be empty")
+	}
+
+	kubecli, err := u.cfg.KubernetesClientSet()
+	if err != nil {
+		return "", fmt.Errorf("failed to new kubernetes clientset, %w", err)
+	}
+	deployment, err := kubecli.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			// it's ok when the deployment doesn't exist.
+			return jsonDoc, nil
+		}
+		return "", err
+	}
+	if deployment == nil {
+		// it's ok when the deployment doesn't exist. This condition is for client-go campatibility.
+		return jsonDoc, nil
+	}
+	if deployment.Spec.Replicas == nil {
+		return "", fmt.Errorf("deployment `%s` in namespace `%s` contains no replicas data", name, namespace)
+	}
+	return sjson.Set(jsonDoc, "spec.replicas", *(deployment.Spec.Replicas))
+}
+
+func (u *Upgrade) resetCapacatyForStatefulSet(ctx context.Context, namespace, name, jsonDoc string) (string, error) {
+	if namespace == "" {
+		return "", errors.New("namespace cannot be empty")
+	}
+	if name == "" {
+		return "", errors.New("name cannot be empty")
+	}
+
+	kubecli, err := u.cfg.KubernetesClientSet()
+	if err != nil {
+		return "", fmt.Errorf("failed to new kubernetes clientset, %w", err)
+	}
+	statefulset, err := kubecli.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			// it's ok when the statefulset doesn't exist.
+			return jsonDoc, nil
+		}
+		return "", err
+	}
+	if statefulset == nil {
+		// it's ok when the statefulset doesn't exist. This condition is for client-go campatibility.
+		return jsonDoc, nil
+	}
+	if statefulset.Spec.Replicas == nil {
+		return "", fmt.Errorf("statefulset `%s` in namespace `%s` contains no replicas data", name, namespace)
+	}
+	return sjson.Set(jsonDoc, "spec.replicas", *(statefulset.Spec.Replicas))
+}
+
+func (u *Upgrade) resetCapacatyForHorizontalPodAutoscaler(ctx context.Context, namespace, name, jsonDoc string) (string, error) {
+	if namespace == "" {
+		return "", errors.New("namespace cannot be empty")
+	}
+	if name == "" {
+		return "", errors.New("name cannot be empty")
+	}
+
+	kubecli, err := u.cfg.KubernetesClientSet()
+	if err != nil {
+		return "", fmt.Errorf("failed to new kubernetes clientset, %w", err)
+	}
+	hpa, err := kubecli.AutoscalingV1().HorizontalPodAutoscalers(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			// it's ok when the statefulset doesn't exist.
+			return jsonDoc, nil
+		}
+		return "", err
+	}
+	if hpa == nil {
+		// it's ok when the hpa doesn't exist. This condition is for client-go campatibility.
+		return jsonDoc, nil
+	}
+	if hpa.Spec.MinReplicas == nil {
+		return "", fmt.Errorf("hpa `%s` in namespace `%s` contains no minReplicas data", name, namespace)
+	}
+	if jsonDoc, err = sjson.Set(jsonDoc, "spec.minReplicas", *(hpa.Spec.MinReplicas)); err != nil {
+		return "", err
+	}
+	return sjson.Set(jsonDoc, "spec.maxReplicas", hpa.Spec.MaxReplicas)
 }
 
 func validateManifest(c kube.Interface, manifest []byte, openAPIValidation bool) error {

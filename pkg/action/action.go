@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
@@ -284,6 +285,14 @@ func (cfg *Configuration) KubernetesClientSet() (kubernetes.Interface, error) {
 	}
 
 	return kubernetes.NewForConfig(conf)
+}
+
+func (cfg *Configuration) DynamicClient() (dynamic.Interface, error) {
+	conf, err := cfg.RESTClientGetter.ToRESTConfig()
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to generate config for kubernetes client")
+	}
+	return dynamic.NewForConfig(conf)
 }
 
 // Now generates a timestamp

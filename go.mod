@@ -3,6 +3,7 @@ module helm.sh/helm/v3
 go 1.16
 
 require (
+	git.agoralab.co/ipt/devkits.git v0.0.0-20220916020742-d24ce7178724
 	github.com/BurntSushi/toml v0.4.1
 	github.com/DATA-DOG/go-sqlmock v1.5.0
 	github.com/Masterminds/semver/v3 v3.1.1
@@ -30,7 +31,7 @@ require (
 	github.com/sirupsen/logrus v1.8.1
 	github.com/spf13/cobra v1.3.0
 	github.com/spf13/pflag v1.0.5
-	github.com/stretchr/testify v1.7.0
+	github.com/stretchr/testify v1.8.0
 	github.com/tidwall/gjson v1.14.1
 	github.com/tidwall/sjson v1.2.4
 	github.com/xeipuuv/gojsonschema v1.2.0

@@ -170,7 +170,9 @@ func (s statusPrinter) WriteTable(out io.Writer) error {
 		for _, h := range s.release.Hooks {
 			fmt.Fprintf(out, "---\n# Source: %s\n%s\n", h.Path, h.Manifest)
 		}
-		fmt.Fprintf(out, "MANIFEST:\n%s\n", s.release.Manifest)
+		fmt.Fprintf(out, "MANIFEST: -------------------------------------------------------\n%s\n", s.release.Manifest)
+		// ZWF: add diff
+		fmt.Fprintf(out, "DIFF: ------------------------------------------------------------\n%s\n", s.release.Info.Diff)
 	}
 
 	if len(s.release.Info.Notes) > 0 {
