@@ -46,9 +46,6 @@ func QueryResourceWithJSONDoc(ctx context.Context, jsonDoc string, dynamicKubeCl
 	if name == "" {
 		return nil, errors.New("resource name cannot be empty in manifest")
 	}
-	if namespace == "" {
-		return nil, errors.New("resource namespace cannot be empty in manifest")
-	}
 
 	gv, err := schema.ParseGroupVersion(apiVersion)
 	if err != nil {

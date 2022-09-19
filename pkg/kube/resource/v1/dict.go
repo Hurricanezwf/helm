@@ -22,51 +22,55 @@ import (
 var DefaultResourceDictionary = EmbeddedResourceDictionary()
 
 const (
-	LowerCertificate              = "certificate"
-	LowerCertificateRequest       = "certificaterequest"
-	LowerChallenge                = "challenge"
-	LowerCiliumEndpoint           = "ciliumendpoint"
-	LowerCiliumNetworkPolicy      = "ciliumnetworkpolicy"
-	LowerConfigMap                = "configmap"
-	LowerCronJob                  = "cronjob"
-	LowerDaemonSet                = "daemonset"
-	LowerDeployment               = "deployment"
-	LowerDNSChaos                 = "dnschaos"
-	LowerHoriziontalPodAutoscaler = "horizontalpodautoscaler"
-	LowerHTTPChaos                = "httpchaos"
-	LowerIngress                  = "ingress"
-	LowerIOChaos                  = "iochaos"
-	LowerIssuer                   = "issuer"
-	LowerJob                      = "job"
-	LowerJVMChaos                 = "jvmchaos"
-	LowerKongConsumer             = "kongconsumer"
-	LowerKongIngress              = "kongingress"
-	LowerKongPlugin               = "kongplugin"
-	LowerNATGateway               = "natgateway"
-	LowerNetworkChaos             = "networkchaos"
-	LowerNetworkPolicy            = "networkpolicy"
-	LowerOrder                    = "order"
-	LowerPersistentVolumeClaim    = "persistentvolumeclaim"
-	LowerPod                      = "pod"
-	LowerPodChaos                 = "podchaos"
-	LowerPodNetworkChaos          = "podnetworkchaos"
-	LowerReplicaSet               = "replicaset"
-	LowerResourceQuota            = "resourcequota"
-	LowerRole                     = "role"
-	LowerRoleBinding              = "rolebinding"
-	LowerSchedule                 = "schedule"
-	LowerSealedSecret             = "sealedsecret"
-	LowerSecret                   = "secret"
-	LowerService                  = "service"
-	LowerServiceAccount           = "serviceaccount"
-	LowerStatefulSet              = "statefulset"
-	LowerStressChaos              = "stresschaos"
-	LowerTimeChaos                = "timechaos"
-	LowerUAPDaemon                = "uapdaemon"
-	LowerUAPDeployment            = "uapdeployment"
-	LowerUAPService               = "uapservice"
-	LowerWorkflow                 = "workflow"
-	LowerWorkloadPool             = "workloadpool"
+	LowerCertificate                  = "certificate"
+	LowerCertificateRequest           = "certificaterequest"
+	LowerChallenge                    = "challenge"
+	LowerCiliumEndpoint               = "ciliumendpoint"
+	LowerCiliumNetworkPolicy          = "ciliumnetworkpolicy"
+	LowerClusterRole                  = "clusterrole"
+	LowerClusterRoleBinding           = "clusterrolebinding"
+	LowerConfigMap                    = "configmap"
+	LowerCronJob                      = "cronjob"
+	LowerDaemonSet                    = "daemonset"
+	LowerDeployment                   = "deployment"
+	LowerDNSChaos                     = "dnschaos"
+	LowerHoriziontalPodAutoscaler     = "horizontalpodautoscaler"
+	LowerHTTPChaos                    = "httpchaos"
+	LowerIngress                      = "ingress"
+	LowerIOChaos                      = "iochaos"
+	LowerIssuer                       = "issuer"
+	LowerJob                          = "job"
+	LowerJVMChaos                     = "jvmchaos"
+	LowerKongConsumer                 = "kongconsumer"
+	LowerKongIngress                  = "kongingress"
+	LowerKongPlugin                   = "kongplugin"
+	LowerNamespace                    = "namespace"
+	LowerNATGateway                   = "natgateway"
+	LowerNetworkChaos                 = "networkchaos"
+	LowerNetworkPolicy                = "networkpolicy"
+	LowerMutatingWebhookConfiguration = "mutatingwebhookconfiguration"
+	LowerOrder                        = "order"
+	LowerPersistentVolumeClaim        = "persistentvolumeclaim"
+	LowerPod                          = "pod"
+	LowerPodChaos                     = "podchaos"
+	LowerPodNetworkChaos              = "podnetworkchaos"
+	LowerReplicaSet                   = "replicaset"
+	LowerResourceQuota                = "resourcequota"
+	LowerRole                         = "role"
+	LowerRoleBinding                  = "rolebinding"
+	LowerSchedule                     = "schedule"
+	LowerSealedSecret                 = "sealedsecret"
+	LowerSecret                       = "secret"
+	LowerService                      = "service"
+	LowerServiceAccount               = "serviceaccount"
+	LowerStatefulSet                  = "statefulset"
+	LowerStressChaos                  = "stresschaos"
+	LowerTimeChaos                    = "timechaos"
+	LowerUAPDaemon                    = "uapdaemon"
+	LowerUAPDeployment                = "uapdeployment"
+	LowerUAPService                   = "uapservice"
+	LowerWorkflow                     = "workflow"
+	LowerWorkloadPool                 = "workloadpool"
 )
 
 type ResourceDictionary interface {
@@ -91,6 +95,8 @@ func newResourceDictionary() *resourceDictonary {
 			LowerChallenge:                "challenges",
 			LowerCiliumEndpoint:           "ciliumendpoints",
 			LowerCiliumNetworkPolicy:      "ciliumnetworkpolicies",
+			LowerClusterRole:              "clusterroles",
+			LowerClusterRoleBinding:       "clusterrolebindings",
 			LowerConfigMap:                "configmaps",
 			LowerCronJob:                  "cronjobs",
 			LowerDaemonSet:                "daemonsets",
@@ -106,9 +112,11 @@ func newResourceDictionary() *resourceDictonary {
 			LowerKongConsumer:             "kongconsumers",
 			LowerKongIngress:              "kongingresses",
 			LowerKongPlugin:               "kongplugins",
+			LowerNamespace:                "namespaces",
 			LowerNATGateway:               "natgateways",
 			LowerNetworkChaos:             "networkchaos",
 			LowerNetworkPolicy:            "networkpolicies",
+			MutatingWebhookConfiguration:  "mutatingwebhookconfigurations",
 			LowerOrder:                    "orders",
 			LowerPersistentVolumeClaim:    "persistentvolumeclaims",
 			LowerPod:                      "pods",
