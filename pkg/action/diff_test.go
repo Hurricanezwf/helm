@@ -23,7 +23,8 @@ import (
 	"testing"
 
 	"helm.sh/helm/v3/pkg/cli"
-	"helm.sh/helm/v3/pkg/utils/encoding"
+
+	"git.agoralab.co/ipt/devkits.git/encoding"
 
 	"github.com/tidwall/gjson"
 	// Import to initialize client auth plugins.

@@ -17,11 +17,13 @@ limitations under the License.
 package fake
 
 import (
+	"context"
 	"io"
 	"strings"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/cli-runtime/pkg/resource"
 
 	"helm.sh/helm/v3/pkg/kube"
@@ -94,6 +96,10 @@ func (p *PrintingKubeClient) Update(_, modified kube.ResourceList, _ bool) (*kub
 // Build implements KubeClient Build.
 func (p *PrintingKubeClient) Build(_ io.Reader, _ bool) (kube.ResourceList, error) {
 	return []*resource.Info{}, nil
+}
+
+func (p *PrintingKubeClient) BuildToUnstructured(_ context.Context, _ string) ([]*unstructured.Unstructured, error) {
+	return nil, nil
 }
 
 // WaitAndGetCompletedPodPhase implements KubeClient WaitAndGetCompletedPodPhase.

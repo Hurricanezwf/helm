@@ -17,10 +17,12 @@ limitations under the License.
 package kube
 
 import (
+	"context"
 	"io"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 // Interface represents a client capable of communicating with the Kubernetes API.
@@ -61,6 +63,9 @@ type Interface interface {
 	//
 	// Validates against OpenAPI schema if validate is true.
 	Build(reader io.Reader, validate bool) (ResourceList, error)
+
+	// BuildToUnstructured build the yaml manifest document to unstructured object list.
+	BuildToUnstructured(ctx context.Context, yamlManifestDoc string) ([]*unstructured.Unstructured, error)
 
 	// WaitAndGetCompletedPodPhase waits up to a timeout until a pod enters a completed phase
 	// and returns said phase (PodSucceeded or PodFailed qualify).

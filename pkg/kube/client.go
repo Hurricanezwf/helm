@@ -27,9 +27,10 @@ import (
 	"sync"
 	"time"
 
+	"git.agoralab.co/ipt/devkits.git/encoding"
+
 	jsonpatch "github.com/evanphx/json-patch"
 	"github.com/pkg/errors"
-	"helm.sh/helm/v3/pkg/utils/encoding"
 	batch "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
 	apiextv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"

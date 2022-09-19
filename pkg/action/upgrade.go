@@ -211,6 +211,25 @@ func (u *Upgrade) prepareUpgrade(ctx context.Context, name string, chart *chart.
 		}
 	}
 
+	// ZWF: 将 currentRelease 中的 manifest 替换为实时状态, 不再以 secret 中记录的 helm 元数据为准.
+	currentObjects, err := u.cfg.KubeClient.BuildToUnstructured(ctx, currentRelease.Manifest)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to build current release's manifest to objecsts, %w", err)
+	}
+	jsonChunks := make([]string, 0, len(currentObjects))
+	for _, obj := range currentObjects {
+		b, err := obj.MarshalJSON()
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to marshal object to json, %w", err)
+		}
+		jsonChunks = append(jsonChunks, string(b))
+	}
+	currentReleaseManifest, err := encoding.JSONChunkToYAMLStream(jsonChunks)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to encode json chunks to yaml stream, %w", err)
+	}
+	currentRelease.Manifest = currentReleaseManifest
+
 	// determine if values will be reused
 	vals, err = u.reuseValues(chart, currentRelease, vals)
 	if err != nil {
@@ -289,6 +308,7 @@ func (u *Upgrade) performUpgrade(ctx context.Context, originalRelease, upgradedR
 		}
 		return upgradedRelease, errors.Wrap(err, "unable to build kubernetes objects from current release manifest")
 	}
+
 	target, err := u.cfg.KubeClient.Build(bytes.NewBufferString(upgradedRelease.Manifest), !u.DisableOpenAPIValidation)
 	if err != nil {
 		return upgradedRelease, errors.Wrap(err, "unable to build kubernetes objects from new release manifest")
