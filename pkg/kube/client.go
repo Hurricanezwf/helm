@@ -31,6 +31,7 @@ import (
 
 	jsonpatch "github.com/evanphx/json-patch"
 	"github.com/pkg/errors"
+	"github.com/tidwall/gjson"
 	batch "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
 	apiextv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -263,6 +264,9 @@ func (c *Client) BuildToUnstructured(ctx context.Context, yamlManifestDoc string
 
 PRODUCE:
 	for _, chunk := range jsonChunks {
+		if gjson.Parse(chunk).Get("kind").String() == "" {
+			continue
+		}
 		select {
 		case <-ctx.Done():
 			select {
