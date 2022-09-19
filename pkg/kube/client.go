@@ -29,12 +29,12 @@ import (
 
 	jsonpatch "github.com/evanphx/json-patch"
 	"github.com/pkg/errors"
+	"helm.sh/helm/v3/pkg/utils/encoding"
 	batch "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
 	apiextv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apiextv1beta1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -45,6 +45,7 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/cli-runtime/pkg/resource"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	cachetools "k8s.io/client-go/tools/cache"
@@ -52,8 +53,11 @@ import (
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
 )
 
-// ErrNoObjectsVisited indicates that during a visit operation, no matching objects were found.
-var ErrNoObjectsVisited = errors.New("no objects visited")
+var (
+	// ErrNoObjectsVisited indicates that during a visit operation, no matching objects were found.
+	ErrNoObjectsVisited = errors.New("no objects visited")
+	ErrNotFound         = errors.New("not found")
+)
 
 var metadataAccessor = meta.NewAccessor()
 
@@ -68,7 +72,8 @@ type Client struct {
 	// Namespace allows to bypass the kubeconfig file for the choice of the namespace
 	Namespace string
 
-	kubeClient *kubernetes.Clientset
+	kubeClient        *kubernetes.Clientset
+	dynamicKubeClient dynamic.Interface
 }
 
 var addToScheme sync.Once
@@ -88,9 +93,23 @@ func New(getter genericclioptions.RESTClientGetter) *Client {
 			panic(err)
 		}
 	})
+
+	factory := cmdutil.NewFactory(getter)
+
+	kubeClient, err := factory.KubernetesClientSet()
+	if err != nil {
+		panic(fmt.Sprintf("WTF HELM FUNCTION API HERE! %v", err))
+	}
+	dynamicKubeClient, err := factory.DynamicClient()
+	if err != nil {
+		panic(fmt.Sprintf("WTF HELM FUNCTION API HERE! %v", err))
+	}
+
 	return &Client{
-		Factory: cmdutil.NewFactory(getter),
-		Log:     nopLogger,
+		Factory:           factory,
+		Log:               nopLogger,
+		kubeClient:        kubeClient,
+		dynamicKubeClient: dynamicKubeClient,
 	}
 }
 
@@ -98,12 +117,7 @@ var nopLogger = func(_ string, _ ...interface{}) {}
 
 // getKubeClient get or create a new KubernetesClientSet
 func (c *Client) getKubeClient() (*kubernetes.Clientset, error) {
-	var err error
-	if c.kubeClient == nil {
-		c.kubeClient, err = c.Factory.KubernetesClientSet()
-	}
-
-	return c.kubeClient, err
+	return c.kubeClient, nil
 }
 
 // IsReachable tests connectivity to the cluster.
@@ -205,6 +219,71 @@ func (c *Client) Build(reader io.Reader, validate bool) (ResourceList, error) {
 		Stream(reader, "").
 		Do().Infos()
 	return result, scrubValidationError(err)
+}
+
+func (c *Client) BuildToUnstructured(ctx context.Context, yamlManifestDoc string) ([]*unstructured.Unstructured, error) {
+	jsonChunks, err := encoding.YAMLStreamToJSONChunk(yamlManifestDoc)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert manifest yaml stream to json chunks, %w", err)
+	}
+
+	resourceListMutex := &sync.RWMutex{}
+	resourceList := make([]*unstructured.Unstructured, 0, len(jsonChunks))
+
+	// setup 3 goroutine to consume the tasks
+	wg := &sync.WaitGroup{}
+	consumerCount := 3
+	queueCh := make(chan string, consumerCount)
+	errCh := make(chan error, consumerCount)
+	defer close(errCh)
+
+	for i := 0; i < consumerCount; i++ {
+		wg.Add(1)
+		go func(wg *sync.WaitGroup) {
+			defer wg.Done()
+			for jsonChunk := range queueCh {
+				obj, err := QueryResourceWithJSONDoc(ctx, jsonChunk, c.dynamicKubeClient)
+				if err != nil {
+					if errors.Is(err, ErrNotFound) {
+						continue
+					}
+					select {
+					case errCh <- err:
+					default:
+					}
+					return // if any error occured, quit the consumer
+				}
+				resourceListMutex.Lock()
+				resourceList = append(resourceList, obj)
+				resourceListMutex.Unlock()
+			}
+		}(wg)
+	}
+
+PRODUCE:
+	for _, chunk := range jsonChunks {
+		select {
+		case <-ctx.Done():
+			select {
+			case errCh <- ctx.Err():
+			default:
+			}
+			break PRODUCE
+		case err := <-errCh:
+			errCh <- err
+			break PRODUCE
+		case queueCh <- chunk:
+		}
+	}
+	close(queueCh)
+	wg.Wait() // wait all consumers to be done.
+
+	select {
+	case err = <-errCh:
+		return nil, err
+	default:
+		return resourceList, nil
+	}
 }
 
 // Update takes the current list of objects and target list of objects and
